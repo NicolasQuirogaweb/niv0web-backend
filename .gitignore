@@ -1,0 +1,45 @@
+# Node.js dependencies
+node_modules/
+
+# Build outputs
+build/
+dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Editor/OS specific files
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
+
+# Temporary files
+*.swp
+*.swo
+*.tmp
+
+# Testing outputs
+coverage/
+.nyc_output/
+
+# Frontend specific
+# Generated files for static sites or apps
+out/
+.next/
+
+# Backend specific
+# Uploaded files or temporary directories
+uploads/
+
+#
