@@ -14,6 +14,10 @@ const playlistSchema = new mongoose.Schema({
         type: String,
         required: true,  // URL de la imagen de la playlist
     },
+    backgroundVideo: {
+        type: String,
+        required: true,  // URL del video de fondo
+    },
     createdAt: {
         type: Date,
         default: Date.now,  // Fecha de creación
@@ -22,7 +26,12 @@ const playlistSchema = new mongoose.Schema({
     beats: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Beat',  // Referencia al modelo Beat
-    }]
+    }],
+    type: {  // Agregar este campo para poder diferenciar entre 'beats' y 'sample_pack'
+        type: String,
+        enum: ['beats'],  // Aceptará solo estos dos valores
+        required: true,  // Tipo de playlist
+    },
 });
 
 // Crear el modelo Playlist con el esquema definido
