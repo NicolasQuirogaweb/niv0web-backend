@@ -14,7 +14,7 @@ connectDB();
 // Middleware
 const allowedOrigins = [
   "http://localhost:3000",         // Local
-  "https://niv0-web.vercel.app"    // Tu dominio en Vercel (ajustalo si cambia)
+  "https://niv0web.vercel.app"    // Tu dominio en Vercel (ajustalo si cambia)
 ];
 
 app.use(
