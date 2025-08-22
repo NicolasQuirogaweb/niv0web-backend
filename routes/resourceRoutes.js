@@ -18,17 +18,19 @@ const b2 = new B2({
   applicationKey: process.env.B2_APPLICATION_KEY,
 });
 
-// Función para generar signed URL de Backblaze
-const getSignedUrl = async (fileName) => {
-  if (!fileName) return null;
+// Función para generar signed URL solo si el path es relativo
+const getSignedUrlIfNeeded = async (filePath) => {
+  if (!filePath) return null;
+  // Si es URL absoluta, retornamos tal cual
+  if (filePath.startsWith('http') || filePath.startsWith('/videos')) return filePath;
   await b2.authorize();
   const auth = await b2.getDownloadAuthorization({
     bucketId: process.env.B2_BUCKET_ID,
-    fileNamePrefix: fileName,
-    validDurationInSeconds: 3600, // 1 hora
+    fileNamePrefix: filePath,
+    validDurationInSeconds: 3600,
   });
   const token = auth.data.authorizationToken;
-  return `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${fileName}?Authorization=${token}`;
+  return `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${token}`;
 };
 
 // Map de recursos
@@ -48,9 +50,9 @@ router.get('/playlists', async (req, res) => {
     const playlistsWithUrls = await Promise.all(
       playlists.map(async (pl) => ({
         ...pl._doc,
-        imageUrl: await getSignedUrl(pl.imageUrl),
-        backgroundVideo: await getSignedUrl(pl.backgroundVideo),
-        beatsCount: await Beat.countDocuments({ playlistId: pl._id }), // opcional
+        imageUrl: await getSignedUrlIfNeeded(pl.imageUrl),
+        backgroundVideo: await getSignedUrlIfNeeded(pl.backgroundVideo),
+        beatsCount: await Beat.countDocuments({ playlistId: pl._id }),
       }))
     );
     res.status(200).json(playlistsWithUrls);
@@ -69,8 +71,8 @@ router.get('/samplePacks', async (req, res) => {
     const samplepacksWithUrls = await Promise.all(
       samplepacks.map(async (sp) => ({
         ...sp._doc,
-        imageUrl: await getSignedUrl(sp.imageUrl),
-        samplesCount: await Samples.countDocuments({ samplepackId: sp._id }), // opcional
+        imageUrl: await getSignedUrlIfNeeded(sp.imageUrl),
+        samplesCount: await Samples.countDocuments({ samplepackId: sp._id }),
       }))
     );
     res.status(200).json(samplepacksWithUrls);
@@ -81,7 +83,7 @@ router.get('/samplePacks', async (req, res) => {
 });
 
 // ---------------------
-// ✅ TODOS LOS RECURSOS (beats, samples, loops, prodmixmasters)
+// ✅ TODOS LOS RECURSOS
 // ---------------------
 router.get('/:resourceType', async (req, res) => {
   const { resourceType } = req.params;
@@ -93,7 +95,7 @@ router.get('/:resourceType', async (req, res) => {
     items = await Promise.all(
       items.map(async (item) => ({
         ...item._doc,
-        audioUrl: await getSignedUrl(item[resource.fileField]),
+        audioFile: await getSignedUrlIfNeeded(item[resource.fileField]),
       }))
     );
     res.status(200).json(items);
@@ -116,19 +118,19 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
 
   try {
     const playlist = await resource.playlistModel.findById(playlistId);
-    if (!playlist) return res.status(404).json({ message: 'Playlist no encontrada' });
+    if (!playlist) return res.status(404).json({ message: resourceType === 'samples' ? 'Sample pack no encontrado' : 'Playlist no encontrada' });
 
     const playlistWithUrls = {
       ...playlist._doc,
-      imageUrl: await getSignedUrl(playlist.imageUrl),
-      backgroundVideo: await getSignedUrl(playlist.backgroundVideo),
+      imageUrl: await getSignedUrlIfNeeded(playlist.imageUrl),
+      backgroundVideo: await getSignedUrlIfNeeded(playlist.backgroundVideo),
     };
 
     let items = await resource.model.find({ [resource.playlistKey]: playlistId });
     items = await Promise.all(
       items.map(async (item) => ({
         ...item._doc,
-        audioUrl: await getSignedUrl(item[resource.fileField]),
+        audioFile: await getSignedUrlIfNeeded(item[resource.fileField]),
       }))
     );
 
