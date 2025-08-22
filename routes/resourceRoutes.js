@@ -31,7 +31,7 @@ const getSignedUrl = async (fileName) => {
   return `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${fileName}?Authorization=${token}`;
 };
 
-// Map de recursos para manejar todos los tipos
+// Map de recursos
 const RESOURCE_MAP = {
   beats: { model: Beat, playlistModel: Playlist, playlistKey: 'playlistId', responseKey: 'beats', fileField: 'audioFile' },
   samples: { model: Samples, playlistModel: SamplePack, playlistKey: 'samplepackId', responseKey: 'samples', fileField: 'audioFile' },
@@ -39,11 +39,53 @@ const RESOURCE_MAP = {
   prodmixmasters: { model: ProdMixMasters, playlistModel: Playlist, playlistKey: 'playlistId', responseKey: 'tracks', fileField: 'audioFile' },
 };
 
-// ✅ Obtener todos los recursos de un tipo
+// ---------------------
+// ✅ PLAYLISTS BEATS
+// ---------------------
+router.get('/playlists', async (req, res) => {
+  try {
+    const playlists = await Playlist.find();
+    const playlistsWithUrls = await Promise.all(
+      playlists.map(async (pl) => ({
+        ...pl._doc,
+        imageUrl: await getSignedUrl(pl.imageUrl),
+        backgroundVideo: await getSignedUrl(pl.backgroundVideo),
+        beatsCount: await Beat.countDocuments({ playlistId: pl._id }), // opcional
+      }))
+    );
+    res.status(200).json(playlistsWithUrls);
+  } catch (error) {
+    console.error('Error al obtener playlists:', error);
+    res.status(500).json({ message: 'Error al obtener playlists' });
+  }
+});
+
+// ---------------------
+// ✅ SAMPLE PACKS
+// ---------------------
+router.get('/samplePacks', async (req, res) => {
+  try {
+    const samplepacks = await SamplePack.find();
+    const samplepacksWithUrls = await Promise.all(
+      samplepacks.map(async (sp) => ({
+        ...sp._doc,
+        imageUrl: await getSignedUrl(sp.imageUrl),
+        samplesCount: await Samples.countDocuments({ samplepackId: sp._id }), // opcional
+      }))
+    );
+    res.status(200).json(samplepacksWithUrls);
+  } catch (error) {
+    console.error('Error al obtener samplepacks:', error);
+    res.status(500).json({ message: 'Error al obtener samplepacks' });
+  }
+});
+
+// ---------------------
+// ✅ TODOS LOS RECURSOS (beats, samples, loops, prodmixmasters)
+// ---------------------
 router.get('/:resourceType', async (req, res) => {
   const { resourceType } = req.params;
   const resource = RESOURCE_MAP[resourceType];
-
   if (!resource) return res.status(400).json({ message: 'Tipo de recurso no válido' });
 
   try {
@@ -61,12 +103,13 @@ router.get('/:resourceType', async (req, res) => {
   }
 });
 
-// ✅ Obtener un catálogo / playlist específico con sus recursos
+// ---------------------
+// ✅ PLAYLIST / SAMPLE PACK INDIVIDUAL
+// ---------------------
 router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
   const { resourceType, playlistId } = req.params;
   const resource = RESOURCE_MAP[resourceType];
   if (!resource) return res.status(400).json({ message: 'Tipo de recurso no válido' });
-
   if (!mongoose.Types.ObjectId.isValid(playlistId)) {
     return res.status(400).json({ message: 'ID de playlist no válido' });
   }
@@ -75,14 +118,12 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
     const playlist = await resource.playlistModel.findById(playlistId);
     if (!playlist) return res.status(404).json({ message: 'Playlist no encontrada' });
 
-    // Signed URLs para la playlist
     const playlistWithUrls = {
       ...playlist._doc,
       imageUrl: await getSignedUrl(playlist.imageUrl),
       backgroundVideo: await getSignedUrl(playlist.backgroundVideo),
     };
 
-    // Obtener todos los recursos asociados
     let items = await resource.model.find({ [resource.playlistKey]: playlistId });
     items = await Promise.all(
       items.map(async (item) => ({
