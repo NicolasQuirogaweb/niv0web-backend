@@ -27,7 +27,7 @@ const getSignedUrlIfNeeded = async (filePath) => {
   const auth = await b2.getDownloadAuthorization({
     bucketId: process.env.B2_BUCKET_ID,
     fileNamePrefix: filePath,
-    validDurationInSeconds: 3600,
+    validDurationInSeconds: 60 * 60 * 24 * 7, 
   });
   const token = auth.data.authorizationToken;
   return `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${token}`;
