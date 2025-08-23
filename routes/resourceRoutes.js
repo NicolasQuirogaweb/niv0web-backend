@@ -21,16 +21,21 @@ const b2 = new B2({
 // Función para generar signed URL solo si el path es relativo
 const getSignedUrlIfNeeded = async (filePath) => {
   if (!filePath) return null;
-  // Si es URL absoluta, retornamos tal cual
+
+  // Si ya es una URL absoluta (http) o video interno, retornamos tal cual
   if (filePath.startsWith('http') || filePath.startsWith('/videos')) return filePath;
+
   await b2.authorize();
+
+  // Generamos token temporal para bucket privado
   const auth = await b2.getDownloadAuthorization({
     bucketId: process.env.B2_BUCKET_ID,
     fileNamePrefix: filePath,
-    validDurationInSeconds: 60 * 60 * 24 * 7, 
+    validDurationInSeconds: 60 * 60 * 24 * 7, // 7 días
   });
-  const token = auth.data.authorizationToken;
-  return `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${token}`;
+
+  // Construimos la URL usando fileName real y token temporal
+  return `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${auth.data.authorizationToken}`;
 };
 
 // Map de recursos
