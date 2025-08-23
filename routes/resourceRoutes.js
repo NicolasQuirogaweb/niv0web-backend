@@ -22,20 +22,11 @@ const b2 = new B2({
 const getSignedUrlIfNeeded = async (filePath) => {
   if (!filePath) return null;
 
-  // Si ya es una URL absoluta (http) o video interno, retornamos tal cual
+  // Si es video local o URL absoluta, la retornamos tal cual
   if (filePath.startsWith('http') || filePath.startsWith('/videos')) return filePath;
 
-  await b2.authorize();
-
-  // Generamos token temporal para bucket privado
-  const auth = await b2.getDownloadAuthorization({
-    bucketId: process.env.B2_BUCKET_ID,
-    fileNamePrefix: filePath,
-    validDurationInSeconds: 60 * 60 * 24 * 7, // 7 días
-  });
-
-  // Construimos la URL usando fileName real y token temporal
-  return `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${auth.data.authorizationToken}`;
+  // Para todo lo demás, devolvemos solo la key interna (tal cual en MongoDB)
+  return filePath;
 };
 
 // Map de recursos
