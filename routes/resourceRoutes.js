@@ -22,12 +22,33 @@ const b2 = new B2({
 const getSignedUrlIfNeeded = async (filePath) => {
   if (!filePath) return null;
 
-  // Si es video local o URL absoluta, la retornamos tal cual
-  if (filePath.startsWith('http') || filePath.startsWith('/videos')) return filePath;
+  // Si es un archivo local o URL absoluta, lo devolvemos tal cual
+  if (filePath.startsWith('http') || filePath.startsWith('/videos')) {
+    return filePath;
+  }
 
-  // Para todo lo demás, devolvemos solo la key interna (tal cual en MongoDB)
-  return filePath;
+  // 🚨 Caso clave: es una key guardada en MongoDB (ej: "images/audioimgblack.webp")
+  try {
+    // Autenticamos contra B2
+    await b2.authorize();
+
+    // Obtenemos la URL de descarga del archivo
+    const { data } = await b2.getDownloadAuthorization({
+      bucketId: process.env.B2_BUCKET_ID,
+      fileNamePrefix: filePath, // ej: "images/audioimgblack.webp"
+      validDurationInSeconds: 60 * 60, // 1 hora
+    });
+
+    // La signed URL se arma con el downloadUrl + key + token
+    const downloadUrl = `${b2.downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${data.authorizationToken}`;
+
+    return downloadUrl;
+  } catch (err) {
+    console.error("❌ Error generando signed URL:", err.message);
+    return null;
+  }
 };
+
 
 // Map de recursos
 const RESOURCE_MAP = {
@@ -122,7 +143,11 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
       backgroundVideo: await getSignedUrlIfNeeded(playlist.backgroundVideo),
     };
 
-    let items = await resource.model.find({ [resource.playlistKey]: playlistId });
+    // ⬇️ ACA ESTÁ EL CAMBIO
+    let items = await resource.model.find({
+      [resource.playlistKey]: new mongoose.Types.ObjectId(playlistId),
+    });
+
     items = await Promise.all(
       items.map(async (item) => ({
         ...item._doc,
@@ -136,5 +161,6 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
     res.status(500).json({ message: `Error al obtener ${resourceType}` });
   }
 });
+
 
 module.exports = router;
