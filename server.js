@@ -20,16 +20,19 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) { 
         return callback(null, true);
       }
       return callback(new Error("CORS not allowed: " + origin));
     },
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST","OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
+
+// Asegura que Express responde preflights
+app.options("*", cors());
 
 app.use(express.json());
 
