@@ -32,7 +32,7 @@ const playlistSchema = new mongoose.Schema({
         enum: ['beats'],  // Aceptará solo estos dos valores
         required: true,  // Tipo de playlist
     },
-});
+},{ timestamps: true });
 
 // Crear el modelo Playlist con el esquema definido
 const Playlist = mongoose.model('Playlist', playlistSchema);

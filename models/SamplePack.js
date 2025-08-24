@@ -28,7 +28,7 @@ const samplePackSchema = new mongoose.Schema({
         enum: [ 'samples'],
         required: true,  // Tipo de playlist
     },
-});  // Aquí especificamos el nombre correcto de la colección
+}, { timestamps: true });  // Aquí especificamos el nombre correcto de la colección
 
 const SamplePack = mongoose.model('SamplePack', samplePackSchema);
 
