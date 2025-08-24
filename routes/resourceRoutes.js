@@ -21,34 +21,21 @@ const b2 = new B2({
 // Función para generar signed URL solo si el path es relativo
 const getSignedUrlIfNeeded = async (filePath) => {
   if (!filePath) return null;
+  if (filePath.startsWith('http') || filePath.startsWith('/videos')) return filePath;
 
-  // Si es un archivo local o URL absoluta, lo devolvemos tal cual
-  if (filePath.startsWith('http') || filePath.startsWith('/videos')) {
-    return filePath;
-  }
-
-  // 🚨 Caso clave: es una key guardada en MongoDB (ej: "images/audioimgblack.webp")
   try {
-    // Autenticamos contra B2
     await b2.authorize();
-
-    // Obtenemos la URL de descarga del archivo
     const { data } = await b2.getDownloadAuthorization({
       bucketId: process.env.B2_BUCKET_ID,
-      fileNamePrefix: filePath, // ej: "images/audioimgblack.webp"
-      validDurationInSeconds: 60 * 60, // 1 hora
+      fileNamePrefix: filePath,
+      validDurationInSeconds: 60 * 60,
     });
-
-    // La signed URL se arma con el downloadUrl + key + token
-    const downloadUrl = `${b2.downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${data.authorizationToken}`;
-
-    return downloadUrl;
+    return `${b2.downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${data.authorizationToken}`;
   } catch (err) {
     console.error("❌ Error generando signed URL:", err.message);
     return null;
   }
 };
-
 
 // Map de recursos
 const RESOURCE_MAP = {
@@ -63,7 +50,7 @@ const RESOURCE_MAP = {
 // ---------------------
 router.get('/playlists', async (req, res) => {
   try {
-    const playlists = await Playlist.find();
+    const playlists = await Playlist.find().sort({ createdAt: -1 }); // <-- Ordenamos por más nuevo primero
     const playlistsWithUrls = await Promise.all(
       playlists.map(async (pl) => ({
         ...pl._doc,
@@ -84,7 +71,7 @@ router.get('/playlists', async (req, res) => {
 // ---------------------
 router.get('/samplePacks', async (req, res) => {
   try {
-    const samplepacks = await SamplePack.find();
+    const samplepacks = await SamplePack.find().sort({ createdAt: -1 }); // <-- Ordenamos por más nuevo primero
     const samplepacksWithUrls = await Promise.all(
       samplepacks.map(async (sp) => ({
         ...sp._doc,
@@ -143,10 +130,10 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
       backgroundVideo: await getSignedUrlIfNeeded(playlist.backgroundVideo),
     };
 
-    // ⬇️ ACA ESTÁ EL CAMBIO
+    // ⬇️ Items ordenados por más nuevo primero
     let items = await resource.model.find({
       [resource.playlistKey]: new mongoose.Types.ObjectId(playlistId),
-    });
+    }).sort({ createdAt: -1 });
 
     items = await Promise.all(
       items.map(async (item) => ({
@@ -161,6 +148,5 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
     res.status(500).json({ message: `Error al obtener ${resourceType}` });
   }
 });
-
 
 module.exports = router;
