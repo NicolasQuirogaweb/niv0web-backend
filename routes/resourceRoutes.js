@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const B2 = require('backblaze-b2');
 require('dotenv').config();
 
 // Modelos
@@ -12,78 +11,20 @@ const Samples = require('../models/Samples');
 const Loops = require('../models/Loops');
 const ProdMixMasters = require('../models/ProdMixMasters');
 
-// Inicializar Backblaze B2
-const b2 = new B2({
-  applicationKeyId: process.env.B2_KEY_ID,
-  applicationKey: process.env.B2_APPLICATION_KEY,
-});
-
-// ---------- Helpers ----------
-const normalizePath = (p) => {
-  if (!p) return p;
-  // quita slashes al inicio
-  return p.replace(/^\/+/, '');
-};
-const encodePathSegments = (p) => {
-  // encodea cada segmento (no encodea '/' que separa)
-  return p.split('/').map(encodeURIComponent).join('/');
-};
-const getBackendOrigin = (req) => {
-  // PRIORIDAD: env var BACKEND_URL (útil en deploy)
-  if (process.env.BACKEND_URL) return process.env.BACKEND_URL.replace(/\/+$/, '');
-  return `${req.protocol}://${req.get('host')}`;
-};
-
 // ---------------------
-// ✅ PROXY PARA ARCHIVOS B2
+// 🔑 Helper para URLs públicas de Backblaze
 // ---------------------
-// Debe ir ANTES de la ruta dinámica '/:resourceType'
-router.get('/file/:filePath(*)', async (req, res) => {
-  try {
-    let { filePath } = req.params;
-    if (!filePath) return res.status(400).send('Missing filePath');
-
-    filePath = normalizePath(filePath); // quita slash inicial si existiera
-
-    await b2.authorize();
-
-    const { data } = await b2.getDownloadAuthorization({
-      bucketId: process.env.B2_BUCKET_ID,
-      fileNamePrefix: filePath,
-      validDurationInSeconds: 60, // corto porque lo generamos por cada request
-    });
-
-    const encoded = encodePathSegments(filePath);
-    const signedUrl = `${b2.downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${encoded}?Authorization=${data.authorizationToken}`;
-
-    // para debug: console.log(`[proxy] ${filePath} -> ${signedUrl}`);
-    return res.redirect(signedUrl);
-  } catch (err) {
-    console.error("❌ Error generando proxy URL:", err && err.message ? err.message : err);
-    return res.status(500).json({ message: 'Error generando el archivo' });
-  }
-});
-
-// ---------------------
-// 🔑 Helper para armar URL de proxy absoluta (devuelve URL completa al backend)
-// ---------------------
-const buildProxyUrl = (filePath, req) => {
+const buildPublicUrl = (filePath) => {
   if (!filePath) return null;
-  // Si ya es una URL absoluta, devolvela tal cual
-  if (filePath.startsWith('http')) return filePath;
-
-  // Si es video local con slash inicial (/videos/...), servirlo desde backend origin
-  if (filePath.startsWith('/videos')) {
-    const clean = filePath.replace(/^\/+/, '');
-    return `${getBackendOrigin(req)}/${encodePathSegments(clean)}`;
-  }
-
-  // Normal case: ruta relativa guardada en DB ('images/xxx.webp' o 'beats/...mp3')
-  const clean = normalizePath(filePath);
-  return `${getBackendOrigin(req)}/api/resources/file/${encodePathSegments(clean)}`;
+  if (filePath.startsWith('http')) return filePath; // URL absoluta
+  const clean = filePath.replace(/^\/+/, ''); // quita slash inicial
+  const encoded = encodeURIComponent(clean); // encodea nombre del archivo
+  return `${process.env.B2_PUBLIC_URL}/${process.env.B2_BUCKET_NAME}/${encoded}`;
 };
 
+// ---------------------
 // Map de recursos
+// ---------------------
 const RESOURCE_MAP = {
   beats: { model: Beat, playlistModel: Playlist, playlistKey: 'playlistId', responseKey: 'beats', fileField: 'audioFile' },
   samples: { model: Samples, playlistModel: SamplePack, playlistKey: 'samplepackId', responseKey: 'samples', fileField: 'audioFile' },
@@ -100,12 +41,12 @@ router.get('/playlists', async (req, res) => {
     const playlistsWithUrls = await Promise.all(
       playlists.map(async (pl) => ({
         ...pl._doc,
-        imageUrl: buildProxyUrl(pl.imageUrl, req),
-        backgroundVideo: buildProxyUrl(pl.backgroundVideo, req),
+        imageUrl: buildPublicUrl(pl.imageUrl),
+        backgroundVideo: buildPublicUrl(pl.backgroundVideo),
         beatsCount: await Beat.countDocuments({ playlistId: pl._id }),
       }))
     );
-    res.status(200).json(playlistsWithUrls);
+    res.json(playlistsWithUrls);
   } catch (error) {
     console.error('Error al obtener playlists:', error);
     res.status(500).json({ message: 'Error al obtener playlists' });
@@ -121,11 +62,11 @@ router.get('/samplePacks', async (req, res) => {
     const samplepacksWithUrls = await Promise.all(
       samplepacks.map(async (sp) => ({
         ...sp._doc,
-        imageUrl: buildProxyUrl(sp.imageUrl, req),
+        imageUrl: buildPublicUrl(sp.imageUrl),
         samplesCount: await Samples.countDocuments({ samplepackId: sp._id }),
       }))
     );
-    res.status(200).json(samplepacksWithUrls);
+    res.json(samplepacksWithUrls);
   } catch (error) {
     console.error('Error al obtener samplepacks:', error);
     res.status(500).json({ message: 'Error al obtener samplepacks' });
@@ -144,9 +85,9 @@ router.get('/:resourceType', async (req, res) => {
     let items = await resource.model.find();
     items = items.map((item) => ({
       ...item._doc,
-      audioFile: buildProxyUrl(item[resource.fileField], req),
+      audioFile: buildPublicUrl(item[resource.fileField]),
     }));
-    res.status(200).json(items);
+    res.json(items);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: `Error al obtener ${resourceType}` });
@@ -170,8 +111,8 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
 
     const playlistWithUrls = {
       ...playlist._doc,
-      imageUrl: buildProxyUrl(playlist.imageUrl, req),
-      backgroundVideo: buildProxyUrl(playlist.backgroundVideo, req),
+      imageUrl: buildPublicUrl(playlist.imageUrl),
+      backgroundVideo: buildPublicUrl(playlist.backgroundVideo),
     };
 
     let items = await resource.model.find({
@@ -180,10 +121,10 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
 
     items = items.map((item) => ({
       ...item._doc,
-      audioFile: buildProxyUrl(item[resource.fileField], req),
+      audioFile: buildPublicUrl(item[resource.fileField]),
     }));
 
-    res.status(200).json({ ...playlistWithUrls, [resource.responseKey]: items });
+    res.json({ ...playlistWithUrls, [resource.responseKey]: items });
   } catch (error) {
     console.error(`Error al obtener ${resourceType} de la playlist:`, error);
     res.status(500).json({ message: `Error al obtener ${resourceType}` });
