@@ -18,23 +18,35 @@ const b2 = new B2({
   applicationKey: process.env.B2_APPLICATION_KEY,
 });
 
-// Función para generar signed URL solo si el path es relativo
-const getSignedUrlIfNeeded = async (filePath) => {
-  if (!filePath) return null;
-  if (filePath.startsWith('http') || filePath.startsWith('/videos')) return filePath;
+// ---------------------
+// ✅ PROXY PARA ARCHIVOS B2
+// ---------------------
+router.get('/file/:filePath(*)', async (req, res) => {
+  const { filePath } = req.params;
 
   try {
     await b2.authorize();
     const { data } = await b2.getDownloadAuthorization({
       bucketId: process.env.B2_BUCKET_ID,
       fileNamePrefix: filePath,
-      validDurationInSeconds: 60 * 60,
+      validDurationInSeconds: 60, // ⏰ solo dura 1 minuto (suficiente para el request)
     });
-    return `${b2.downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${data.authorizationToken}`;
+
+    const signedUrl = `${b2.downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${filePath}?Authorization=${data.authorizationToken}`;
+    return res.redirect(signedUrl);
   } catch (err) {
-    console.error("❌ Error generando signed URL:", err.message);
-    return null;
+    console.error("❌ Error generando proxy URL:", err.message);
+    return res.status(500).json({ message: 'Error generando el archivo' });
   }
+});
+
+// ---------------------
+// 🔑 Helper para armar URL de proxy
+// ---------------------
+const buildProxyUrl = (filePath) => {
+  if (!filePath) return null;
+  if (filePath.startsWith('http') || filePath.startsWith('/videos')) return filePath;
+  return `/api/resources/file/${filePath}`;
 };
 
 // Map de recursos
@@ -50,12 +62,12 @@ const RESOURCE_MAP = {
 // ---------------------
 router.get('/playlists', async (req, res) => {
   try {
-    const playlists = await Playlist.find().sort({ createdAt: -1 }); // <-- Ordenamos por más nuevo primero
+    const playlists = await Playlist.find().sort({ createdAt: -1 });
     const playlistsWithUrls = await Promise.all(
       playlists.map(async (pl) => ({
         ...pl._doc,
-        imageUrl: await getSignedUrlIfNeeded(pl.imageUrl),
-        backgroundVideo: await getSignedUrlIfNeeded(pl.backgroundVideo),
+        imageUrl: buildProxyUrl(pl.imageUrl),
+        backgroundVideo: buildProxyUrl(pl.backgroundVideo),
         beatsCount: await Beat.countDocuments({ playlistId: pl._id }),
       }))
     );
@@ -71,11 +83,11 @@ router.get('/playlists', async (req, res) => {
 // ---------------------
 router.get('/samplePacks', async (req, res) => {
   try {
-    const samplepacks = await SamplePack.find().sort({ createdAt: -1 }); // <-- Ordenamos por más nuevo primero
+    const samplepacks = await SamplePack.find().sort({ createdAt: -1 });
     const samplepacksWithUrls = await Promise.all(
       samplepacks.map(async (sp) => ({
         ...sp._doc,
-        imageUrl: await getSignedUrlIfNeeded(sp.imageUrl),
+        imageUrl: buildProxyUrl(sp.imageUrl),
         samplesCount: await Samples.countDocuments({ samplepackId: sp._id }),
       }))
     );
@@ -96,12 +108,10 @@ router.get('/:resourceType', async (req, res) => {
 
   try {
     let items = await resource.model.find();
-    items = await Promise.all(
-      items.map(async (item) => ({
-        ...item._doc,
-        audioFile: await getSignedUrlIfNeeded(item[resource.fileField]),
-      }))
-    );
+    items = items.map((item) => ({
+      ...item._doc,
+      audioFile: buildProxyUrl(item[resource.fileField]),
+    }));
     res.status(200).json(items);
   } catch (error) {
     console.error(error);
@@ -122,25 +132,24 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
 
   try {
     const playlist = await resource.playlistModel.findById(playlistId);
-    if (!playlist) return res.status(404).json({ message: resourceType === 'samples' ? 'Sample pack no encontrado' : 'Playlist no encontrada' });
+    if (!playlist) {
+      return res.status(404).json({ message: resourceType === 'samples' ? 'Sample pack no encontrado' : 'Playlist no encontrada' });
+    }
 
     const playlistWithUrls = {
       ...playlist._doc,
-      imageUrl: await getSignedUrlIfNeeded(playlist.imageUrl),
-      backgroundVideo: await getSignedUrlIfNeeded(playlist.backgroundVideo),
+      imageUrl: buildProxyUrl(playlist.imageUrl),
+      backgroundVideo: buildProxyUrl(playlist.backgroundVideo),
     };
 
-    // ⬇️ Items ordenados por más nuevo primero
     let items = await resource.model.find({
       [resource.playlistKey]: new mongoose.Types.ObjectId(playlistId),
     }).sort({ createdAt: -1 });
 
-    items = await Promise.all(
-      items.map(async (item) => ({
-        ...item._doc,
-        audioFile: await getSignedUrlIfNeeded(item[resource.fileField]),
-      }))
-    );
+    items = items.map((item) => ({
+      ...item._doc,
+      audioFile: buildProxyUrl(item[resource.fileField]),
+    }));
 
     res.status(200).json({ ...playlistWithUrls, [resource.responseKey]: items });
   } catch (error) {
