@@ -1,41 +1,35 @@
 const mongoose = require('mongoose');
 
-// Definir el esquema de la playlist
 const playlistSchema = new mongoose.Schema({
     title: {
         type: String,
-        required: true,  // Título de la playlist
+        required: true,
     },
     description: {
         type: String,
-        required: true,  // Descripción de la playlist
+        required: true,
     },
     imageUrl: {
         type: String,
-        required: true,  // URL de la imagen de la playlist
+        required: true,
     },
     backgroundVideo: {
         type: String,
-        required: true,  // URL del video de fondo
+        required: true,
     },
     createdAt: {
         type: Date,
-        default: Date.now,  // Fecha de creación
+        default: Date.now,
     },
-    // Relación con los beats (referencia a los beats asociados a esta playlist)
-    beats: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Beat',  // Referencia al modelo Beat
-    }],
-    type: {  // Agregar este campo para poder diferenciar entre 'beats' y 'sample_pack'
+    type: {
         type: String,
-        enum: ['beats'],  // Aceptará solo estos dos valores
-        required: true,  // Tipo de playlist
+        enum: ['beats', 'loops'],
+        required: true,
     },
-},{ timestamps: true });
+}, { timestamps: true });
 
-// Crear el modelo Playlist con el esquema definido
+playlistSchema.index({ createdAt: -1 });
+
 const Playlist = mongoose.model('Playlist', playlistSchema);
 
-// Exportar el modelo
 module.exports = Playlist;

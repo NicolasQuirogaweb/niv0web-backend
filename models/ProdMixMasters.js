@@ -23,6 +23,8 @@ const prodMixMastersSchema = new mongoose.Schema({
     },
 }, { timestamps: true });
 
+prodMixMastersSchema.index({ createdAt: -1 });
+
 // Se mantiene el nombre de la colección en plural "prodmixmasters"
 const ProdMixMasters = mongoose.model('ProdMixMasters', prodMixMastersSchema, 'prodmixmasters');
 

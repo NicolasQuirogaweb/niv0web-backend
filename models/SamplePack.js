@@ -18,17 +18,14 @@ const samplePackSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,  // Fecha de creación
     },
-    // Relación con los samples (referencia a los samples asociados a este samplepack)
-        samples: [{
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'sample',  // Referencia al modelo Beat
-        }],
-    type: {  // Agregar este campo para diferenciar entre 'beats' y 'sample_pack'
+    type: {
         type: String,
-        enum: [ 'samples'],
-        required: true,  // Tipo de playlist
+        enum: ['samples'],
+        required: true,
     },
-}, { timestamps: true });  // Aquí especificamos el nombre correcto de la colección
+}, { timestamps: true });
+
+samplePackSchema.index({ createdAt: -1 });
 
 const SamplePack = mongoose.model('SamplePack', samplePackSchema);
 

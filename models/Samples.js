@@ -28,6 +28,8 @@ const sampleSchema = new mongoose.Schema({
     },
 }, { timestamps: true });
 
+sampleSchema.index({ samplepackId: 1, createdAt: -1 });
+
 const Samples = mongoose.model('Samples', sampleSchema);
 
 module.exports = Samples;
