@@ -16,9 +16,9 @@ const ProdMixMasters = require('../models/ProdMixMasters');
 // ---------------------
 const buildPublicUrl = (filePath) => {
   if (!filePath) return null;
-  if (filePath.startsWith('http')) return filePath; // URL absoluta
-  const clean = filePath.replace(/^\/+/, ''); // quita slash inicial
-  const encoded = encodeURIComponent(clean); // encodea nombre del archivo
+  if (filePath.startsWith('http')) return filePath;
+  const clean = filePath.replace(/^\/+/, '');
+  const encoded = clean.split('/').map(encodeURIComponent).join('/');
   return `${process.env.B2_PUBLIC_URL}/${process.env.B2_BUCKET_NAME}/${encoded}`;
 };
 
@@ -37,16 +37,22 @@ const RESOURCE_MAP = {
 // ---------------------
 router.get('/playlists', async (req, res) => {
   try {
-    const playlists = await Playlist.find().sort({ createdAt: -1 });
-    const playlistsWithUrls = await Promise.all(
-      playlists.map(async (pl) => ({
-        ...pl._doc,
-        imageUrl: buildPublicUrl(pl.imageUrl),
-        backgroundVideo: buildPublicUrl(pl.backgroundVideo),
-        beatsCount: await Beat.countDocuments({ playlistId: pl._id }),
-      }))
-    );
-    res.json(playlistsWithUrls);
+    const playlists = await Playlist.find().sort({ createdAt: -1 }).lean();
+    const playlistIds = playlists.map(pl => pl._id);
+    const counts = await Beat.aggregate([
+      { $match: { playlistId: { $in: playlistIds } } },
+      { $group: { _id: '$playlistId', count: { $sum: 1 } } },
+    ]);
+    const countMap = {};
+    for (const c of counts) countMap[c._id.toString()] = c.count;
+
+    const result = playlists.map(pl => ({
+      ...pl,
+      imageUrl: buildPublicUrl(pl.imageUrl),
+      backgroundVideo: buildPublicUrl(pl.backgroundVideo),
+      beatsCount: countMap[pl._id.toString()] || 0,
+    }));
+    res.json(result);
   } catch (error) {
     console.error('Error al obtener playlists:', error);
     res.status(500).json({ message: 'Error al obtener playlists' });
@@ -58,15 +64,21 @@ router.get('/playlists', async (req, res) => {
 // ---------------------
 router.get('/samplePacks', async (req, res) => {
   try {
-    const samplepacks = await SamplePack.find().sort({ createdAt: -1 });
-    const samplepacksWithUrls = await Promise.all(
-      samplepacks.map(async (sp) => ({
-        ...sp._doc,
-        imageUrl: buildPublicUrl(sp.imageUrl),
-        samplesCount: await Samples.countDocuments({ samplepackId: sp._id }),
-      }))
-    );
-    res.json(samplepacksWithUrls);
+    const samplepacks = await SamplePack.find().sort({ createdAt: -1 }).lean();
+    const samplepackIds = samplepacks.map(sp => sp._id);
+    const counts = await Samples.aggregate([
+      { $match: { samplepackId: { $in: samplepackIds } } },
+      { $group: { _id: '$samplepackId', count: { $sum: 1 } } },
+    ]);
+    const countMap = {};
+    for (const c of counts) countMap[c._id.toString()] = c.count;
+
+    const result = samplepacks.map(sp => ({
+      ...sp,
+      imageUrl: buildPublicUrl(sp.imageUrl),
+      samplesCount: countMap[sp._id.toString()] || 0,
+    }));
+    res.json(result);
   } catch (error) {
     console.error('Error al obtener samplepacks:', error);
     res.status(500).json({ message: 'Error al obtener samplepacks' });
@@ -82,9 +94,9 @@ router.get('/:resourceType', async (req, res) => {
   if (!resource) return res.status(400).json({ message: 'Tipo de recurso no válido' });
 
   try {
-    let items = await resource.model.find();
+    let items = await resource.model.find().lean();
     items = items.map((item) => ({
-      ...item._doc,
+      ...item,
       audioFile: buildPublicUrl(item[resource.fileField]),
     }));
     res.json(items);
@@ -106,21 +118,21 @@ router.get('/:resourceType/playlist/:playlistId', async (req, res) => {
   }
 
   try {
-    const playlist = await resource.playlistModel.findById(playlistId);
+    const playlist = await resource.playlistModel.findById(playlistId).lean();
     if (!playlist) return res.status(404).json({ message: resourceType === 'samples' ? 'Sample pack no encontrado' : 'Playlist no encontrada' });
 
     const playlistWithUrls = {
-      ...playlist._doc,
+      ...playlist,
       imageUrl: buildPublicUrl(playlist.imageUrl),
       backgroundVideo: buildPublicUrl(playlist.backgroundVideo),
     };
 
     let items = await resource.model.find({
       [resource.playlistKey]: new mongoose.Types.ObjectId(playlistId),
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).lean();
 
     items = items.map((item) => ({
-      ...item._doc,
+      ...item,
       audioFile: buildPublicUrl(item[resource.fileField]),
     }));
 

@@ -33,6 +33,8 @@
         },
     }, { timestamps: true });
 
+beatSchema.index({ playlistId: 1, createdAt: -1 });
+
     const Beat = mongoose.model('Beat', beatSchema);
 
     module.exports = Beat;

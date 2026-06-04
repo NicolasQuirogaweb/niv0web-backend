@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+.env
+.git
+beats
+samples
+loops
+prodmixmasters
+uploads
