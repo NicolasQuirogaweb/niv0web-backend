@@ -31,6 +31,7 @@ router.post("/google-login", async (req, res) => {
     } else {
       user.name = name;
       user.imageUrl = picture;
+      user.googleId = sub;
     }
 
     await user.save();

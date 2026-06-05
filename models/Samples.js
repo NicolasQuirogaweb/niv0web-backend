@@ -8,7 +8,7 @@ const sampleSchema = new mongoose.Schema({
     },
     description: {
         type: String,
-        required: [true, "La descripción es obligatoria"],
+        default: "",
         maxlength: [300, "La descripción no puede exceder los 300 caracteres"],
     },
     audioFile: {
