@@ -11,7 +11,10 @@ const adminAuth = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findOne({ googleId: decoded.userId });
+    let user = await User.findOne({ googleId: decoded.userId });
+    if (!user && decoded.email) {
+      user = await User.findOne({ email: decoded.email });
+    }
 
     if (!user || user.role !== 'admin') {
       return res.status(403).json({ message: 'Acceso denegado: se requieren permisos de administrador' });

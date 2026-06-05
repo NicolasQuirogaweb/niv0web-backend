@@ -39,17 +39,27 @@ router.post('/upload/batch', adminAuth, upload.array('files', 20), async (req, r
   try {
     if (!req.files || req.files.length === 0) return res.status(400).json({ message: 'No se enviaron archivos' });
     const folder = req.body.folder || 'uploads';
-    const results = await Promise.all(
+    const results = await Promise.allSettled(
       req.files.map(file => uploadToB2(file.buffer, file.originalname, folder))
     );
-    const urls = req.files.map((file, i) => ({
-      originalName: file.originalname,
-      url: results[i],
-    }));
-    res.json({ urls });
+    const urls = [];
+    const errors = [];
+    req.files.forEach((file, i) => {
+      if (results[i].status === 'fulfilled') {
+        urls.push({ originalName: file.originalname, url: results[i].value });
+      } else {
+        errors.push({ originalName: file.originalname, error: results[i].reason?.message || 'Unknown error' });
+      }
+    });
+    res.json({ urls, errors });
   } catch (error) {
-    console.error('Error al subir archivos:', error);
-    res.status(500).json({ message: 'Error al subir archivos' });
+    console.error('=== BATCH UPLOAD ERROR ===');
+    console.error('Message:', error.message);
+    console.error('Stack:', error.stack);
+    if (error.response) console.error('Response status:', error.response.status, 'data:', JSON.stringify(error.response.data).slice(0, 500));
+    if (error.config) console.error('Request URL:', error.config.url);
+    if (error.uploadContext) console.error('Upload context:', error.uploadContext);
+    res.status(500).json({ message: 'Error al subir archivos', detail: error.message });
   }
 });
 
@@ -177,10 +187,10 @@ router.get('/playlists/:playlistId/beats', adminAuth, async (req, res) => {
 router.post('/playlists/:playlistId/beats', adminAuth, async (req, res) => {
   try {
     const { title, artist, description, audioFile } = req.body;
-    if (!title || !artist || !description || !audioFile) {
-      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
+    if (!title || !audioFile) {
+      return res.status(400).json({ message: 'Faltan campos obligatorios (título y audio)' });
     }
-    const beat = await Beat.create({ title, artist, description, audioFile, playlistId: req.params.playlistId });
+    const beat = await Beat.create({ title, artist: artist || '', description: description || '', audioFile, playlistId: req.params.playlistId });
     res.status(201).json(beat);
   } catch (error) {
     res.status(500).json({ message: 'Error al crear beat' });
@@ -240,10 +250,10 @@ router.get('/playlists/:playlistId/loops', adminAuth, async (req, res) => {
 router.post('/playlists/:playlistId/loops', adminAuth, async (req, res) => {
   try {
     const { title, description, audioFile } = req.body;
-    if (!title || !description || !audioFile) {
-      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
+    if (!title || !audioFile) {
+      return res.status(400).json({ message: 'Faltan campos obligatorios (título y audio)' });
     }
-    const loop = await Loops.create({ title, description, audioFile, playlistId: req.params.playlistId });
+    const loop = await Loops.create({ title, description: description || '', audioFile, playlistId: req.params.playlistId });
     res.status(201).json(loop);
   } catch (error) {
     res.status(500).json({ message: 'Error al crear loop' });
@@ -382,10 +392,10 @@ router.get('/samplepacks/:samplepackId/samples', adminAuth, async (req, res) => 
 router.post('/samplepacks/:samplepackId/samples', adminAuth, async (req, res) => {
   try {
     const { title, description, audioFile } = req.body;
-    if (!title || !description || !audioFile) {
-      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
+    if (!title || !audioFile) {
+      return res.status(400).json({ message: 'Faltan campos obligatorios (título y audio)' });
     }
-    const sample = await Samples.create({ title, description, audioFile, samplepackId: req.params.samplepackId });
+    const sample = await Samples.create({ title, description: description || '', audioFile, samplepackId: req.params.samplepackId });
     res.status(201).json(sample);
   } catch (error) {
     res.status(500).json({ message: 'Error al crear sample' });
@@ -445,10 +455,10 @@ router.get('/prodmixmasters', adminAuth, async (req, res) => {
 router.post('/prodmixmasters', adminAuth, async (req, res) => {
   try {
     const { title, description, audioFile } = req.body;
-    if (!title || !description || !audioFile) {
-      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
+    if (!title || !audioFile) {
+      return res.status(400).json({ message: 'Faltan campos obligatorios (título y audio)' });
     }
-    const item = await ProdMixMasters.create({ title, description, audioFile });
+    const item = await ProdMixMasters.create({ title, description: description || '', audioFile });
     res.status(201).json(item);
   } catch (error) {
     res.status(500).json({ message: 'Error al crear prod mix master' });

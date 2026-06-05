@@ -6,16 +6,16 @@
             required: [true, "El título del beat es obligatorio"],
             maxlength: [100, "El título no puede exceder los 100 caracteres"],
         },
-        artist: {
-            type: String,
-            required: [true, "El nombre del artista es obligatorio"],
-            maxlength: [50, "El nombre del artista no puede exceder los 50 caracteres"],
-        },
-        description: {
-            type: String,
-            required: [true, "La descripción es obligatoria"],
-            maxlength: [300, "La descripción no puede exceder los 300 caracteres"],
-        },
+    artist: {
+        type: String,
+        default: "",
+        maxlength: [50, "El nombre del artista no puede exceder los 50 caracteres"],
+    },
+    description: {
+        type: String,
+        default: "",
+        maxlength: [300, "La descripción no puede exceder los 300 caracteres"],
+    },
         audioFile: {
             type: String,
             required: [true, "La ruta del archivo de audio es obligatoria"],
