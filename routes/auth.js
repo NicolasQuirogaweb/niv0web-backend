@@ -4,7 +4,41 @@ const axios = require("axios");
 const User = require("../models/User");
 const asyncHandler = require("../middleware/asyncHandler");
 const ApiError = require("../utils/ApiError");
+const { success } = require("../utils/response");
 const router = express.Router();
+
+const REFRESH_COOKIE = "refreshToken";
+const REFRESH_PATH = "/api/auth";
+
+const setRefreshCookie = (res, token) => {
+  res.cookie(REFRESH_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: REFRESH_PATH,
+  });
+};
+
+const clearRefreshCookie = (res) => {
+  res.clearCookie(REFRESH_COOKIE, { path: REFRESH_PATH });
+};
+
+const generateAccessToken = (user) => {
+  return jwt.sign(
+    { userId: user.googleId, email: user.email, name: user.name, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "15m" }
+  );
+};
+
+const generateRefreshToken = (user) => {
+  return jwt.sign(
+    { userId: user.googleId, email: user.email },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: "7d" }
+  );
+};
 
 router.post("/google-login", asyncHandler(async (req, res) => {
   const { credential } = req.body;
@@ -28,29 +62,40 @@ router.post("/google-login", asyncHandler(async (req, res) => {
   }
   await user.save();
 
-  const token = jwt.sign(
-    { userId: user.googleId, email: user.email, name: user.name, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: "1h" }
-  );
+  const accessToken = generateAccessToken(user);
+  const refreshToken = generateRefreshToken(user);
 
-  res.json({
-    token,
+  setRefreshCookie(res, refreshToken);
+
+  success(res, {
+    token: accessToken,
     user: { name: user.name, email: user.email, imageUrl: user.imageUrl, role: user.role },
   });
 }));
 
-router.get("/verify-token", (req, res) => {
+router.get("/verify-token", asyncHandler(async (req, res) => {
   const token = req.headers["authorization"]?.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ message: "No se proporcionó un token" });
-  }
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(401).json({ message: "Token inválido o expirado" });
-    }
-    res.json({ email: decoded.email, name: decoded.name, role: decoded.role });
-  });
+  if (!token) throw ApiError.unauthorized("No se proporcionó un token");
+
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  success(res, { email: decoded.email, name: decoded.name, role: decoded.role });
+}));
+
+router.post("/refresh", asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies?.[REFRESH_COOKIE];
+  if (!refreshToken) throw ApiError.unauthorized("No hay refresh token");
+
+  const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+  const user = await User.findOne({ googleId: decoded.userId });
+  if (!user) throw ApiError.unauthorized("Usuario no encontrado");
+
+  const newAccessToken = generateAccessToken(user);
+  success(res, { token: newAccessToken });
+}));
+
+router.post("/logout", (req, res) => {
+  clearRefreshCookie(res);
+  success(res, { message: "Sesión cerrada" });
 });
 
 module.exports = router;
