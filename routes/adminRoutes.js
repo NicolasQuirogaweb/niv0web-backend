@@ -8,6 +8,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const validate = require('../middleware/validate');
 const { uploadToB2 } = require('../services/b2Service');
 const ApiError = require('../utils/ApiError');
+const { success } = require('../utils/response');
 
 const Playlist = require('../models/Playlist');
 const Beat = require('../models/Beat');
@@ -46,7 +47,7 @@ router.post('/upload', adminAuth, upload.single('file'), asyncHandler(async (req
   if (!req.file) throw ApiError.badRequest('No se envió ningún archivo');
   const folder = req.body.folder || 'uploads';
   const result = await uploadToB2(req.file.buffer, req.file.originalname, folder, req.file.mimetype);
-  res.json(result);
+  success(res, result);
 }));
 
 router.post('/upload/batch', adminAuth, upload.array('files', 20), asyncHandler(async (req, res) => {
@@ -58,20 +59,17 @@ router.post('/upload/batch', adminAuth, upload.array('files', 20), asyncHandler(
   const urls = [];
   const errors = [];
   req.files.forEach((file, i) => {
-    if (results[i].status === 'fulfilled') {
-      urls.push(results[i].value);
-    } else {
-      errors.push({ originalName: file.originalname, error: results[i].reason?.message || 'Error desconocido' });
-    }
+    if (results[i].status === 'fulfilled') urls.push(results[i].value);
+    else errors.push({ originalName: file.originalname, error: results[i].reason?.message || 'Error desconocido' });
   });
-  res.json({ urls, errors });
+  success(res, { urls, errors });
 }));
 
 // ========== USERS ==========
 
 router.get('/users', adminAuth, asyncHandler(async (req, res) => {
   const users = await User.find().sort({ createdAt: -1 }).lean();
-  res.json(users);
+  success(res, users);
 }));
 
 router.put('/users/:id/role', adminAuth, asyncHandler(async (req, res) => {
@@ -79,7 +77,7 @@ router.put('/users/:id/role', adminAuth, asyncHandler(async (req, res) => {
   if (!['user', 'admin'].includes(role)) throw ApiError.badRequest('Rol no válido');
   const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).lean();
   if (!user) throw ApiError.notFound('Usuario no encontrado');
-  res.json(user);
+  success(res, user);
 }));
 
 // ========== PLAYLISTS ==========
@@ -91,7 +89,7 @@ router.get('/playlists', adminAuth, asyncHandler(async (req, res) => {
     const count = await Model.countDocuments({ playlistId: pl._id });
     return { ...pl, itemsCount: count };
   }));
-  res.json(result);
+  success(res, result);
 }));
 
 const playlistFields = [
@@ -105,7 +103,7 @@ const playlistFields = [
 router.post('/playlists', adminAuth, playlistFields, validate, asyncHandler(async (req, res) => {
   const { title, description, imageUrl, backgroundVideo, type } = req.body;
   const playlist = await Playlist.create({ title, description, imageUrl, backgroundVideo, type });
-  res.status(201).json(playlist);
+  success(res, playlist, {}, 201);
 }));
 
 router.put('/playlists/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -116,7 +114,7 @@ router.put('/playlists/:id', adminAuth, asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   ).lean();
   if (!playlist) throw ApiError.notFound('Playlist no encontrada');
-  res.json(playlist);
+  success(res, playlist);
 }));
 
 router.delete('/playlists/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -125,7 +123,7 @@ router.delete('/playlists/:id', adminAuth, asyncHandler(async (req, res) => {
   const Model = playlist.type === 'beats' ? Beat : Loops;
   await Model.deleteMany({ playlistId: playlist._id });
   await Playlist.findByIdAndDelete(req.params.id);
-  res.json({ message: 'Playlist y sus items eliminados' });
+  success(res, { message: 'Playlist y sus items eliminados' });
 }));
 
 router.post('/playlists/:id/duplicate', adminAuth, asyncHandler(async (req, res) => {
@@ -148,14 +146,14 @@ router.post('/playlists/:id/duplicate', adminAuth, asyncHandler(async (req, res)
     playlistId: newPlaylist._id,
   }));
   if (newItems.length > 0) await Model.insertMany(newItems);
-  res.status(201).json({ message: 'Playlist duplicada', playlist: newPlaylist, itemsCount: newItems.length });
+  success(res, { message: 'Playlist duplicada', playlist: newPlaylist, itemsCount: newItems.length }, {}, 201);
 }));
 
 // ========== BEATS ==========
 
 router.get('/playlists/:playlistId/beats', adminAuth, asyncHandler(async (req, res) => {
   const beats = await Beat.find({ playlistId: req.params.playlistId }).sort({ createdAt: -1 }).lean();
-  res.json(beats);
+  success(res, beats);
 }));
 
 const beatFields = [
@@ -166,7 +164,7 @@ const beatFields = [
 router.post('/playlists/:playlistId/beats', adminAuth, beatFields, validate, asyncHandler(async (req, res) => {
   const { title, artist, description, audioFile } = req.body;
   const beat = await Beat.create({ title, artist: artist || '', description: description || '', audioFile, playlistId: req.params.playlistId });
-  res.status(201).json(beat);
+  success(res, beat, {}, 201);
 }));
 
 router.post('/playlists/:playlistId/beats/batch', adminAuth, asyncHandler(async (req, res) => {
@@ -174,7 +172,7 @@ router.post('/playlists/:playlistId/beats/batch', adminAuth, asyncHandler(async 
   if (!Array.isArray(beats) || beats.length === 0) throw ApiError.badRequest('Se requiere un array de beats');
   const withPlaylistId = beats.map(b => ({ ...b, playlistId: req.params.playlistId }));
   const created = await Beat.insertMany(withPlaylistId);
-  res.status(201).json({ beats: created, count: created.length });
+  success(res, { beats: created, count: created.length }, {}, 201);
 }));
 
 router.put('/beats/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -185,20 +183,20 @@ router.put('/beats/:id', adminAuth, asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   ).lean();
   if (!beat) throw ApiError.notFound('Beat no encontrado');
-  res.json(beat);
+  success(res, beat);
 }));
 
 router.delete('/beats/:id', adminAuth, asyncHandler(async (req, res) => {
   const beat = await Beat.findByIdAndDelete(req.params.id).lean();
   if (!beat) throw ApiError.notFound('Beat no encontrado');
-  res.json({ message: 'Beat eliminado' });
+  success(res, { message: 'Beat eliminado' });
 }));
 
 // ========== LOOPS ==========
 
 router.get('/playlists/:playlistId/loops', adminAuth, asyncHandler(async (req, res) => {
   const loops = await Loops.find({ playlistId: req.params.playlistId }).sort({ createdAt: -1 }).lean();
-  res.json(loops);
+  success(res, loops);
 }));
 
 const loopFields = [
@@ -209,7 +207,7 @@ const loopFields = [
 router.post('/playlists/:playlistId/loops', adminAuth, loopFields, validate, asyncHandler(async (req, res) => {
   const { title, description, audioFile } = req.body;
   const loop = await Loops.create({ title, description: description || '', audioFile, playlistId: req.params.playlistId });
-  res.status(201).json(loop);
+  success(res, loop, {}, 201);
 }));
 
 router.post('/playlists/:playlistId/loops/batch', adminAuth, asyncHandler(async (req, res) => {
@@ -217,7 +215,7 @@ router.post('/playlists/:playlistId/loops/batch', adminAuth, asyncHandler(async 
   if (!Array.isArray(loops) || loops.length === 0) throw ApiError.badRequest('Se requiere un array de loops');
   const withPlaylistId = loops.map(l => ({ ...l, playlistId: req.params.playlistId }));
   const created = await Loops.insertMany(withPlaylistId);
-  res.status(201).json({ loops: created, count: created.length });
+  success(res, { loops: created, count: created.length }, {}, 201);
 }));
 
 router.put('/loops/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -228,13 +226,13 @@ router.put('/loops/:id', adminAuth, asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   ).lean();
   if (!loop) throw ApiError.notFound('Loop no encontrado');
-  res.json(loop);
+  success(res, loop);
 }));
 
 router.delete('/loops/:id', adminAuth, asyncHandler(async (req, res) => {
   const loop = await Loops.findByIdAndDelete(req.params.id).lean();
   if (!loop) throw ApiError.notFound('Loop no encontrado');
-  res.json({ message: 'Loop eliminado' });
+  success(res, { message: 'Loop eliminado' });
 }));
 
 // ========== SAMPLE PACKS ==========
@@ -245,7 +243,7 @@ router.get('/samplepacks', adminAuth, asyncHandler(async (req, res) => {
     const count = await Samples.countDocuments({ samplepackId: sp._id });
     return { ...sp, itemsCount: count };
   }));
-  res.json(result);
+  success(res, result);
 }));
 
 const samplePackFields = [
@@ -257,7 +255,7 @@ const samplePackFields = [
 router.post('/samplepacks', adminAuth, samplePackFields, validate, asyncHandler(async (req, res) => {
   const { title, description, imageUrl } = req.body;
   const samplepack = await SamplePack.create({ title, description, imageUrl, type: 'samples' });
-  res.status(201).json(samplepack);
+  success(res, samplepack, {}, 201);
 }));
 
 router.put('/samplepacks/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -268,7 +266,7 @@ router.put('/samplepacks/:id', adminAuth, asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   ).lean();
   if (!samplepack) throw ApiError.notFound('Sample pack no encontrado');
-  res.json(samplepack);
+  success(res, samplepack);
 }));
 
 router.delete('/samplepacks/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -276,7 +274,7 @@ router.delete('/samplepacks/:id', adminAuth, asyncHandler(async (req, res) => {
   if (!samplepack) throw ApiError.notFound('Sample pack no encontrado');
   await Samples.deleteMany({ samplepackId: samplepack._id });
   await SamplePack.findByIdAndDelete(req.params.id);
-  res.json({ message: 'Sample pack y sus samples eliminados' });
+  success(res, { message: 'Sample pack y sus samples eliminados' });
 }));
 
 router.post('/samplepacks/:id/duplicate', adminAuth, asyncHandler(async (req, res) => {
@@ -296,14 +294,14 @@ router.post('/samplepacks/:id/duplicate', adminAuth, asyncHandler(async (req, re
     samplepackId: newSp._id,
   }));
   if (newSamples.length > 0) await Samples.insertMany(newSamples);
-  res.status(201).json({ message: 'Sample pack duplicado', samplepack: newSp, itemsCount: newSamples.length });
+  success(res, { message: 'Sample pack duplicado', samplepack: newSp, itemsCount: newSamples.length }, {}, 201);
 }));
 
 // ========== SAMPLES ==========
 
 router.get('/samplepacks/:samplepackId/samples', adminAuth, asyncHandler(async (req, res) => {
   const samples = await Samples.find({ samplepackId: req.params.samplepackId }).sort({ createdAt: -1 }).lean();
-  res.json(samples);
+  success(res, samples);
 }));
 
 const sampleFields = [
@@ -314,7 +312,7 @@ const sampleFields = [
 router.post('/samplepacks/:samplepackId/samples', adminAuth, sampleFields, validate, asyncHandler(async (req, res) => {
   const { title, description, audioFile } = req.body;
   const sample = await Samples.create({ title, description: description || '', audioFile, samplepackId: req.params.samplepackId });
-  res.status(201).json(sample);
+  success(res, sample, {}, 201);
 }));
 
 router.post('/samplepacks/:samplepackId/samples/batch', adminAuth, asyncHandler(async (req, res) => {
@@ -322,7 +320,7 @@ router.post('/samplepacks/:samplepackId/samples/batch', adminAuth, asyncHandler(
   if (!Array.isArray(samples) || samples.length === 0) throw ApiError.badRequest('Se requiere un array de samples');
   const withPackId = samples.map(s => ({ ...s, samplepackId: req.params.samplepackId }));
   const created = await Samples.insertMany(withPackId);
-  res.status(201).json({ samples: created, count: created.length });
+  success(res, { samples: created, count: created.length }, {}, 201);
 }));
 
 router.put('/samples/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -333,20 +331,20 @@ router.put('/samples/:id', adminAuth, asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   ).lean();
   if (!sample) throw ApiError.notFound('Sample no encontrado');
-  res.json(sample);
+  success(res, sample);
 }));
 
 router.delete('/samples/:id', adminAuth, asyncHandler(async (req, res) => {
   const sample = await Samples.findByIdAndDelete(req.params.id).lean();
   if (!sample) throw ApiError.notFound('Sample no encontrado');
-  res.json({ message: 'Sample eliminado' });
+  success(res, { message: 'Sample eliminado' });
 }));
 
 // ========== PROD MIX MASTERS ==========
 
 router.get('/prodmixmasters', adminAuth, asyncHandler(async (req, res) => {
   const items = await ProdMixMasters.find().sort({ createdAt: -1 }).lean();
-  res.json(items);
+  success(res, items);
 }));
 
 const prodMixFields = [
@@ -357,7 +355,7 @@ const prodMixFields = [
 router.post('/prodmixmasters', adminAuth, prodMixFields, validate, asyncHandler(async (req, res) => {
   const { title, description, audioFile } = req.body;
   const item = await ProdMixMasters.create({ title, description: description || '', audioFile });
-  res.status(201).json(item);
+  success(res, item, {}, 201);
 }));
 
 router.put('/prodmixmasters/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -368,13 +366,13 @@ router.put('/prodmixmasters/:id', adminAuth, asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   ).lean();
   if (!item) throw ApiError.notFound('Prod mix master no encontrado');
-  res.json(item);
+  success(res, item);
 }));
 
 router.delete('/prodmixmasters/:id', adminAuth, asyncHandler(async (req, res) => {
   const item = await ProdMixMasters.findByIdAndDelete(req.params.id).lean();
   if (!item) throw ApiError.notFound('Prod mix master no encontrado');
-  res.json({ message: 'Prod mix master eliminado' });
+  success(res, { message: 'Prod mix master eliminado' });
 }));
 
 // ========== DASHBOARD ==========
@@ -389,7 +387,7 @@ router.get('/dashboard', adminAuth, asyncHandler(async (req, res) => {
     ProdMixMasters.countDocuments(),
     User.countDocuments(),
   ]);
-  res.json({ playlists, beats, loops, samplepacks, samples, prodmix, users });
+  success(res, { playlists, beats, loops, samplepacks, samples, prodmix, users });
 }));
 
 module.exports = router;

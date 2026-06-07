@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const asyncHandler = require('../middleware/asyncHandler');
+const { success } = require('../utils/response');
 
 const Playlist = require('../models/Playlist');
 const Beat = require('../models/Beat');
@@ -41,7 +42,7 @@ router.get('/playlists', asyncHandler(async (req, res) => {
     backgroundVideo: buildPublicUrl(pl.backgroundVideo),
     beatsCount: countMap[pl._id.toString()] || 0,
   }));
-  res.json(result);
+  success(res, result);
 }));
 
 router.get('/samplePacks', asyncHandler(async (req, res) => {
@@ -59,36 +60,36 @@ router.get('/samplePacks', asyncHandler(async (req, res) => {
     imageUrl: buildPublicUrl(sp.imageUrl),
     samplesCount: countMap[sp._id.toString()] || 0,
   }));
-  res.json(result);
+  success(res, result);
 }));
 
 router.get('/:resourceType', asyncHandler(async (req, res) => {
   const { resourceType } = req.params;
   const resource = RESOURCE_MAP[resourceType];
   if (!resource) {
-    return res.status(400).json({ message: 'Tipo de recurso no válido' });
+    return res.status(400).json({ success: false, message: 'Tipo de recurso no válido', code: 'BAD_REQUEST' });
   }
   let items = await resource.model.find().lean();
   items = items.map((item) => ({
     ...item,
     audioFile: buildPublicUrl(item[resource.fileField]),
   }));
-  res.json(items);
+  success(res, items);
 }));
 
 router.get('/:resourceType/playlist/:playlistId', asyncHandler(async (req, res) => {
   const { resourceType, playlistId } = req.params;
   const resource = RESOURCE_MAP[resourceType];
   if (!resource) {
-    return res.status(400).json({ message: 'Tipo de recurso no válido' });
+    return res.status(400).json({ success: false, message: 'Tipo de recurso no válido', code: 'BAD_REQUEST' });
   }
   if (!mongoose.Types.ObjectId.isValid(playlistId)) {
-    return res.status(400).json({ message: 'ID de playlist no válido' });
+    return res.status(400).json({ success: false, message: 'ID de playlist no válido', code: 'INVALID_ID' });
   }
 
   const playlist = await resource.playlistModel.findById(playlistId).lean();
   if (!playlist) {
-    return res.status(404).json({ message: resourceType === 'samples' ? 'Sample pack no encontrado' : 'Playlist no encontrada' });
+    return res.status(404).json({ success: false, message: resourceType === 'samples' ? 'Sample pack no encontrado' : 'Playlist no encontrada', code: 'NOT_FOUND' });
   }
 
   const playlistWithUrls = {
@@ -106,7 +107,7 @@ router.get('/:resourceType/playlist/:playlistId', asyncHandler(async (req, res) 
     audioFile: buildPublicUrl(item[resource.fileField]),
   }));
 
-  res.json({ ...playlistWithUrls, [resource.responseKey]: items });
+  success(res, { ...playlistWithUrls, [resource.responseKey]: items });
 }));
 
 module.exports = router;

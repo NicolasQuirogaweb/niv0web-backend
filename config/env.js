@@ -6,6 +6,7 @@ const envSchema = z.object({
   PORT: z.string().default('5000').transform(Number),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI es requerida'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET debe tener al menos 32 caracteres'),
+  JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET debe tener al menos 32 caracteres'),
   B2_KEY_ID: z.string().min(1, 'B2_KEY_ID es requerida'),
   B2_APPLICATION_KEY: z.string().min(1, 'B2_APPLICATION_KEY es requerida'),
   B2_BUCKET_ID: z.string().min(1, 'B2_BUCKET_ID es requerida'),

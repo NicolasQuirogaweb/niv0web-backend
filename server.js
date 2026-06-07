@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const compression = require("compression");
+const cookieParser = require("cookie-parser");
 const mongoose = require("mongoose");
 const path = require("path");
 const connectDB = require("./config/db");
@@ -16,7 +17,11 @@ const adminRoutes = require("./routes/adminRoutes");
 const app = express();
 connectDB();
 
-app.use(helmet());
+app.use(helmet({
+  hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
+  referrerPolicy: { policy: "same-origin" },
+  contentSecurityPolicy: false,
+}));
 app.use(compression());
 app.use(generalLimiter);
 
@@ -42,12 +47,32 @@ app.options("*", cors());
 
 app.use("/api/auth", authLimiter);
 
+app.use(cookieParser());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/resources", resourceRoutes);
 app.use("/api/admin", uploadLimiter, adminRoutes);
+
+app.get("/api/download", async (req, res, next) => {
+  try {
+    const { url } = req.query;
+    if (!url) return next(ApiError.badRequest("URL parameter required"));
+    console.log("Download attempt for URL:", url.substring(0, 80));
+    if (!url.startsWith("https://") || !url.includes("backblazeb2.com")) {
+      return next(ApiError.forbidden("Invalid download source"));
+    }
+    const axios = require("axios");
+    const response = await axios({ url, method: "GET", responseType: "stream" });
+    const filename = decodeURIComponent(url.split("/").pop() || "download");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
+    response.data.pipe(res);
+  } catch (err) {
+    next(ApiError.internal("Download error: " + err.message));
+  }
+});
 
 app.get("/health", async (req, res) => {
   const dbState = mongoose.connection.readyState;
