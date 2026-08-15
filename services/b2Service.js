@@ -7,10 +7,11 @@ const ALLOWED_MIME_TYPES = {
   'audio/x-wav': { ext: 'wav', maxSize: 100 * 1024 * 1024 },
   'image/jpeg': { ext: 'jpg', maxSize: 10 * 1024 * 1024 },
   'image/png': { ext: 'png', maxSize: 10 * 1024 * 1024 },
+  'image/gif': { ext: 'gif', maxSize: 20 * 1024 * 1024 },
   'video/mp4': { ext: 'mp4', maxSize: 500 * 1024 * 1024 },
 };
 
-const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.mp4'];
+const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.gif', '.mp4'];
 
 // Distintos browsers/SO reportan mimetypes inconsistentes (o ninguno) para
 // estas extensiones JPEG legacy — la extensión manda por sobre el mimetype
