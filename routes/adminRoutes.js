@@ -6,7 +6,7 @@ const { body, param } = require('express-validator');
 const adminAuth = require('../middleware/adminAuth');
 const asyncHandler = require('../middleware/asyncHandler');
 const validate = require('../middleware/validate');
-const { uploadToB2, resolveMimeType } = require('../services/b2Service');
+const { uploadToB2 } = require('../services/b2Service');
 const ApiError = require('../utils/ApiError');
 const { success } = require('../utils/response');
 
@@ -18,20 +18,13 @@ const Samples = require('../models/Samples');
 const ProdMixMasters = require('../models/ProdMixMasters');
 const User = require('../models/User');
 
-const mimeFilter = (req, file, cb) => {
-  const allowed = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'image/jpeg', 'image/png', 'video/mp4'];
-  const resolved = resolveMimeType(file.originalname, file.mimetype);
-  if (allowed.includes(resolved)) {
-    cb(null, true);
-  } else {
-    cb(new Error(`Tipo de archivo no permitido: ${file.mimetype}`));
-  }
-};
-
+// El chequeo de tipo real vive en uploadToB2 -> validateFile (services/b2Service.js),
+// que produce un error prolijo (statusCode/code) y por-archivo dentro de /upload/batch.
+// Un fileFilter acá aborta TODA la petición (incluida la batch completa) apenas un
+// solo archivo no pasa, antes de llegar al route handler.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 },
-  fileFilter: mimeFilter,
 });
 
 const buildPublicUrl = (filePath) => {
@@ -54,16 +47,22 @@ router.post('/upload', adminAuth, upload.single('file'), asyncHandler(async (req
 router.post('/upload/batch', adminAuth, upload.array('files', 20), asyncHandler(async (req, res) => {
   if (!req.files || req.files.length === 0) throw ApiError.badRequest('No se enviaron archivos');
   const folder = req.body.folder || 'uploads';
-  const results = await Promise.allSettled(
+  const settled = await Promise.allSettled(
     req.files.map(file => uploadToB2(file.buffer, file.originalname, folder, file.mimetype))
   );
   const urls = [];
   const errors = [];
-  req.files.forEach((file, i) => {
-    if (results[i].status === 'fulfilled') urls.push(results[i].value);
-    else errors.push({ originalName: file.originalname, error: results[i].reason?.message || 'Error desconocido' });
+  const results = req.files.map((file, i) => {
+    const outcome = settled[i];
+    if (outcome.status === 'fulfilled') {
+      urls.push(outcome.value);
+      return { success: true, originalName: file.originalname, ...outcome.value };
+    }
+    const error = outcome.reason?.message || 'Error desconocido';
+    errors.push({ originalName: file.originalname, error });
+    return { success: false, originalName: file.originalname, error };
   });
-  success(res, { urls, errors });
+  success(res, { urls, errors, results });
 }));
 
 // ========== USERS ==========
@@ -171,7 +170,15 @@ router.post('/playlists/:playlistId/beats', adminAuth, beatFields, validate, asy
 router.post('/playlists/:playlistId/beats/batch', adminAuth, asyncHandler(async (req, res) => {
   const { beats } = req.body;
   if (!Array.isArray(beats) || beats.length === 0) throw ApiError.badRequest('Se requiere un array de beats');
-  const withPlaylistId = beats.map(b => ({ ...b, playlistId: req.params.playlistId }));
+  const invalidIndex = beats.findIndex(b => !b || !String(b.title || '').trim() || !String(b.audioFile || '').trim());
+  if (invalidIndex !== -1) throw ApiError.badRequest(`El beat en la posición ${invalidIndex + 1} no tiene título o audioFile`);
+  const withPlaylistId = beats.map(b => ({
+    title: b.title,
+    artist: b.artist || '',
+    description: b.description || '',
+    audioFile: b.audioFile,
+    playlistId: req.params.playlistId,
+  }));
   const created = await Beat.insertMany(withPlaylistId);
   success(res, { beats: created, count: created.length }, {}, 201);
 }));
@@ -214,7 +221,14 @@ router.post('/playlists/:playlistId/loops', adminAuth, loopFields, validate, asy
 router.post('/playlists/:playlistId/loops/batch', adminAuth, asyncHandler(async (req, res) => {
   const { loops } = req.body;
   if (!Array.isArray(loops) || loops.length === 0) throw ApiError.badRequest('Se requiere un array de loops');
-  const withPlaylistId = loops.map(l => ({ ...l, playlistId: req.params.playlistId }));
+  const invalidIndex = loops.findIndex(l => !l || !String(l.title || '').trim() || !String(l.audioFile || '').trim());
+  if (invalidIndex !== -1) throw ApiError.badRequest(`El loop en la posición ${invalidIndex + 1} no tiene título o audioFile`);
+  const withPlaylistId = loops.map(l => ({
+    title: l.title,
+    description: l.description || '',
+    audioFile: l.audioFile,
+    playlistId: req.params.playlistId,
+  }));
   const created = await Loops.insertMany(withPlaylistId);
   success(res, { loops: created, count: created.length }, {}, 201);
 }));
@@ -319,7 +333,14 @@ router.post('/samplepacks/:samplepackId/samples', adminAuth, sampleFields, valid
 router.post('/samplepacks/:samplepackId/samples/batch', adminAuth, asyncHandler(async (req, res) => {
   const { samples } = req.body;
   if (!Array.isArray(samples) || samples.length === 0) throw ApiError.badRequest('Se requiere un array de samples');
-  const withPackId = samples.map(s => ({ ...s, samplepackId: req.params.samplepackId }));
+  const invalidIndex = samples.findIndex(s => !s || !String(s.title || '').trim() || !String(s.audioFile || '').trim());
+  if (invalidIndex !== -1) throw ApiError.badRequest(`El sample en la posición ${invalidIndex + 1} no tiene título o audioFile`);
+  const withPackId = samples.map(s => ({
+    title: s.title,
+    description: s.description || '',
+    audioFile: s.audioFile,
+    samplepackId: req.params.samplepackId,
+  }));
   const created = await Samples.insertMany(withPackId);
   success(res, { samples: created, count: created.length }, {}, 201);
 }));
