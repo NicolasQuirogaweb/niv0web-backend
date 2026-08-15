@@ -104,8 +104,20 @@ const uploadToB2 = async (fileBuffer, fileName, folder = 'uploads', mimeType = '
     }
   }
 
-  lastError.uploadContext = { fileName: uniqueName, key, attempts: 3 };
-  throw lastError;
+  console.error('B2 upload failed:', {
+    fileName: uniqueName,
+    key,
+    attempts: 3,
+    status: lastError.response?.status,
+    data: lastError.response?.data,
+    message: lastError.message,
+  });
+
+  const uploadError = new Error('Error al subir el archivo al almacenamiento');
+  uploadError.statusCode = 502;
+  uploadError.code = 'STORAGE_UPLOAD_FAILED';
+  uploadError.cause = lastError;
+  throw uploadError;
 };
 
 module.exports = { uploadToB2, resolveMimeType, ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS };
