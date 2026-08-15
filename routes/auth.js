@@ -9,12 +9,14 @@ const router = express.Router();
 
 const REFRESH_COOKIE = "refreshToken";
 const REFRESH_PATH = "/api/auth";
+const ACCESS_COOKIE = "accessToken";
+const ACCESS_PATH = "/";
 
 const setRefreshCookie = (res, token) => {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: true,
+    sameSite: "none",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: REFRESH_PATH,
   });
@@ -22,6 +24,20 @@ const setRefreshCookie = (res, token) => {
 
 const clearRefreshCookie = (res) => {
   res.clearCookie(REFRESH_COOKIE, { path: REFRESH_PATH });
+};
+
+const setAccessCookie = (res, token) => {
+  res.cookie(ACCESS_COOKIE, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    maxAge: 15 * 60 * 1000,
+    path: ACCESS_PATH,
+  });
+};
+
+const clearAccessCookie = (res) => {
+  res.clearCookie(ACCESS_COOKIE, { path: ACCESS_PATH });
 };
 
 const generateAccessToken = (user) => {
@@ -66,6 +82,7 @@ router.post("/google-login", asyncHandler(async (req, res) => {
   const refreshToken = generateRefreshToken(user);
 
   setRefreshCookie(res, refreshToken);
+  setAccessCookie(res, accessToken);
 
   success(res, {
     token: accessToken,
@@ -74,7 +91,7 @@ router.post("/google-login", asyncHandler(async (req, res) => {
 }));
 
 router.get("/verify-token", asyncHandler(async (req, res) => {
-  const token = req.headers["authorization"]?.split(" ")[1];
+  const token = req.cookies?.[ACCESS_COOKIE] || req.headers["authorization"]?.split(" ")[1];
   if (!token) throw ApiError.unauthorized("No se proporcionó un token");
 
   const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -90,11 +107,13 @@ router.post("/refresh", asyncHandler(async (req, res) => {
   if (!user) throw ApiError.unauthorized("Usuario no encontrado");
 
   const newAccessToken = generateAccessToken(user);
+  setAccessCookie(res, newAccessToken);
   success(res, { token: newAccessToken });
 }));
 
 router.post("/logout", (req, res) => {
   clearRefreshCookie(res);
+  clearAccessCookie(res);
   success(res, { message: "Sesión cerrada" });
 });
 
