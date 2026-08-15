@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const { body, param } = require('express-validator');
 const adminAuth = require('../middleware/adminAuth');
+const { uploadLimiter } = require('../middleware/rateLimiter');
 const asyncHandler = require('../middleware/asyncHandler');
 const validate = require('../middleware/validate');
 const { uploadToB2 } = require('../services/b2Service');
@@ -37,14 +38,14 @@ const buildPublicUrl = (filePath) => {
 
 // ========== UPLOAD ==========
 
-router.post('/upload', adminAuth, upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/upload', adminAuth, uploadLimiter, upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) throw ApiError.badRequest('No se envió ningún archivo');
   const folder = req.body.folder || 'uploads';
   const result = await uploadToB2(req.file.buffer, req.file.originalname, folder, req.file.mimetype);
   success(res, result);
 }));
 
-router.post('/upload/batch', adminAuth, upload.array('files', 20), asyncHandler(async (req, res) => {
+router.post('/upload/batch', adminAuth, uploadLimiter, upload.array('files', 20), asyncHandler(async (req, res) => {
   if (!req.files || req.files.length === 0) throw ApiError.badRequest('No se enviaron archivos');
   const folder = req.body.folder || 'uploads';
   const settled = await Promise.allSettled(

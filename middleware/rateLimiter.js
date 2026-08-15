@@ -18,7 +18,7 @@ const authLimiter = rateLimit({
 
 const uploadLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 60,
   message: { success: false, message: 'Demasiadas subidas, espere un minuto', code: 'RATE_LIMIT' },
   standardHeaders: true,
   legacyHeaders: false,
