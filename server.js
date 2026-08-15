@@ -7,7 +7,7 @@ const cookieParser = require("cookie-parser");
 const mongoose = require("mongoose");
 const path = require("path");
 const connectDB = require("./config/db");
-const { generalLimiter, authLimiter, uploadLimiter } = require("./middleware/rateLimiter");
+const { generalLimiter, authLimiter } = require("./middleware/rateLimiter");
 const errorHandler = require("./middleware/errorHandler");
 const ApiError = require("./utils/ApiError");
 const authRoutes = require("./routes/auth");
@@ -55,7 +55,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/resources", resourceRoutes);
-app.use("/api/admin", uploadLimiter, adminRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/api/download", async (req, res, next) => {
   try {
