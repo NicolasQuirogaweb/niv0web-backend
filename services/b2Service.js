@@ -1,3 +1,4 @@
+const path = require('path');
 const B2 = require('backblaze-b2');
 
 const ALLOWED_MIME_TYPES = {
@@ -9,7 +10,18 @@ const ALLOWED_MIME_TYPES = {
   'video/mp4': { ext: 'mp4', maxSize: 500 * 1024 * 1024 },
 };
 
-const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.jpg', '.jpeg', '.png', '.mp4'];
+const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.mp4'];
+
+// Distintos browsers/SO reportan mimetypes inconsistentes (o ninguno) para
+// estas extensiones JPEG legacy — la extensión manda por sobre el mimetype
+// que haya mandado el cliente.
+const JPEG_EXTENSIONS = ['.jpg', '.jpeg', '.jpe', '.jfif'];
+
+const resolveMimeType = (originalName, reportedMimeType) => {
+  const ext = path.extname(originalName || '').toLowerCase();
+  if (JPEG_EXTENSIONS.includes(ext)) return 'image/jpeg';
+  return reportedMimeType;
+};
 
 const b2 = new B2({
   applicationKeyId: process.env.B2_KEY_ID,
@@ -52,7 +64,8 @@ const validateFile = (mimeType, originalName, size) => {
 };
 
 const uploadToB2 = async (fileBuffer, fileName, folder = 'uploads', mimeType = 'application/octet-stream') => {
-  validateFile(mimeType, fileName, fileBuffer.length);
+  const resolvedMimeType = resolveMimeType(fileName, mimeType);
+  validateFile(resolvedMimeType, fileName, fileBuffer.length);
 
   const cleanName = sanitizeFileName(fileName);
   const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${cleanName}`;
@@ -69,12 +82,12 @@ const uploadToB2 = async (fileBuffer, fileName, folder = 'uploads', mimeType = '
         uploadAuthToken: uploadUrl.authorizationToken,
         fileName: key,
         data: fileBuffer,
-        mime: mimeType,
+        mime: resolvedMimeType,
       });
 
       const url = `${process.env.B2_PUBLIC_URL}/${process.env.B2_BUCKET_NAME}/${key}`;
 
-      return { url, filename: uniqueName, size: fileBuffer.length, mimeType };
+      return { url, filename: uniqueName, size: fileBuffer.length, mimeType: resolvedMimeType };
     } catch (err) {
       lastError = err;
       const status = err.response?.status;
@@ -95,4 +108,4 @@ const uploadToB2 = async (fileBuffer, fileName, folder = 'uploads', mimeType = '
   throw lastError;
 };
 
-module.exports = { uploadToB2, ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS };
+module.exports = { uploadToB2, resolveMimeType, ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS };

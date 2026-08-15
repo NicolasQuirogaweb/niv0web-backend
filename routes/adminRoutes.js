@@ -6,7 +6,7 @@ const { body, param } = require('express-validator');
 const adminAuth = require('../middleware/adminAuth');
 const asyncHandler = require('../middleware/asyncHandler');
 const validate = require('../middleware/validate');
-const { uploadToB2 } = require('../services/b2Service');
+const { uploadToB2, resolveMimeType } = require('../services/b2Service');
 const ApiError = require('../utils/ApiError');
 const { success } = require('../utils/response');
 
@@ -20,7 +20,8 @@ const User = require('../models/User');
 
 const mimeFilter = (req, file, cb) => {
   const allowed = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'image/jpeg', 'image/png', 'video/mp4'];
-  if (allowed.includes(file.mimetype)) {
+  const resolved = resolveMimeType(file.originalname, file.mimetype);
+  if (allowed.includes(resolved)) {
     cb(null, true);
   } else {
     cb(new Error(`Tipo de archivo no permitido: ${file.mimetype}`));
