@@ -4,9 +4,11 @@ const User = require('../models/User');
 const Loops = require('../models/Loops');
 const Playlist = require('../models/Playlist');
 
-const ADMIN_EMAIL = 'nivo2798@gmail.com';
+// Uso: node scripts/migrate.js tu-email@gmail.com  (o ADMIN_EMAIL en .env)
+const ADMIN_EMAIL = process.argv[2] || process.env.ADMIN_EMAIL;
 
 async function migrate() {
+  if (!ADMIN_EMAIL) throw new Error('Pasá el email del admin como argumento o en ADMIN_EMAIL');
   await mongoose.connect(process.env.MONGODB_URI);
   console.log('Conectado a MongoDB');
 
