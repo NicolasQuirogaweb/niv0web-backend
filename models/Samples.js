@@ -23,7 +23,7 @@ const sampleSchema = new mongoose.Schema({
     },
     samplepackId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Samplepack',
+        ref: 'SamplePack',
         required: [true, "El ID del sample pack es obligatorio"],
     },
 }, { timestamps: true });

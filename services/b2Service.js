@@ -8,7 +8,7 @@ const ALLOWED_MIME_TYPES = {
   'image/jpeg': { ext: 'jpg', maxSize: 10 * 1024 * 1024 },
   'image/png': { ext: 'png', maxSize: 10 * 1024 * 1024 },
   'image/gif': { ext: 'gif', maxSize: 20 * 1024 * 1024 },
-  'video/mp4': { ext: 'mp4', maxSize: 500 * 1024 * 1024 },
+  'video/mp4': { ext: 'mp4', maxSize: 100 * 1024 * 1024 }, // tope real: multer corta en 100 MB
 };
 
 const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.gif', '.mp4'];
@@ -31,6 +31,10 @@ const b2 = new B2({
 
 let authPromise = null;
 
+const MAX_ATTEMPTS = 3;
+const RETRY_BASE_MS = 500;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const authorize = async () => {
   if (!authPromise) {
     authPromise = b2.authorize().finally(() => {
@@ -47,7 +51,7 @@ const sanitizeFileName = (fileName) => {
   return `${clean}${ext}`;
 };
 
-const validateFile = (mimeType, originalName, size) => {
+const validateFile = (mimeType, size) => {
   const typeConfig = ALLOWED_MIME_TYPES[mimeType];
   if (!typeConfig) {
     const err = new Error(`Tipo de archivo no permitido: ${mimeType}`);
@@ -66,14 +70,14 @@ const validateFile = (mimeType, originalName, size) => {
 
 const uploadToB2 = async (fileBuffer, fileName, folder = 'uploads', mimeType = 'application/octet-stream') => {
   const resolvedMimeType = resolveMimeType(fileName, mimeType);
-  validateFile(resolvedMimeType, fileName, fileBuffer.length);
+  validateFile(resolvedMimeType, fileBuffer.length);
 
   const cleanName = sanitizeFileName(fileName);
   const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${cleanName}`;
   const key = `${folder}/${uniqueName}`;
   let lastError;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       await authorize();
       const { data: uploadUrl } = await b2.getUploadUrl({ bucketId: process.env.B2_BUCKET_ID });
@@ -92,23 +96,17 @@ const uploadToB2 = async (fileBuffer, fileName, folder = 'uploads', mimeType = '
     } catch (err) {
       lastError = err;
       const status = err.response?.status;
-      const isAuthError = status === 401 || status === 403 || err.code === 'ERR_RATE_LIMIT';
-      if (isAuthError) {
-        authPromise = null;
-        continue;
-      }
-      if (status === 429 || (status && status >= 500) || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
-        if (attempt < 2) continue;
-      }
-      if (attempt < 2) continue;
-      break;
+      // Un 401/403 suele ser el token de autorización vencido: se fuerza re-authorize.
+      if (status === 401 || status === 403) authPromise = null;
+      // B2 recomienda pedir una upload URL nueva y esperar antes de reintentar.
+      if (attempt < MAX_ATTEMPTS - 1) await sleep(RETRY_BASE_MS * 2 ** attempt);
     }
   }
 
   console.error('B2 upload failed:', {
     fileName: uniqueName,
     key,
-    attempts: 3,
+    attempts: MAX_ATTEMPTS,
     status: lastError.response?.status,
     data: lastError.response?.data,
     message: lastError.message,

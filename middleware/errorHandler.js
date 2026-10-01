@@ -1,5 +1,3 @@
-const ApiError = require('../utils/ApiError');
-
 const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Error interno del servidor';
@@ -45,6 +43,11 @@ const errorHandler = (err, req, res, next) => {
     statusCode = 400;
     code = 'INVALID_JSON';
     message = 'JSON mal formado en el cuerpo de la solicitud';
+  }
+
+  // En producción no exponemos el detalle de un error inesperado.
+  if (statusCode >= 500 && process.env.NODE_ENV === 'production' && !err.statusCode) {
+    message = 'Error interno del servidor';
   }
 
   const response = {

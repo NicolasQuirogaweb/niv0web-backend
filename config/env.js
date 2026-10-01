@@ -13,6 +13,7 @@ const envSchema = z.object({
   B2_BUCKET_NAME: z.string().min(1, 'B2_BUCKET_NAME es requerido'),
   B2_PUBLIC_URL: z.string().url('B2_PUBLIC_URL debe ser una URL válida'),
   GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID es requerido'),
+  FRONTEND_URL: z.string().url('FRONTEND_URL debe ser una URL válida').default('http://localhost:3000'),
 });
 
 const parseEnv = () => {
