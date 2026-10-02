@@ -4,9 +4,9 @@
 
 Backend for **niv0 prod**, the site where I publish my beats, loops and sample packs. Anyone with a Google account can listen and download. I manage the catalog from an admin panel, and the audio files live in Backblaze B2.
 
-<!-- ✍️ NICO: 2-3 lines in your own words. Why did you build this instead of using BeatStars or a Linktree?
-     What was the problem as a producer? Example of the tone (don't copy it):
-     "I was sending beats over WhatsApp and Drive links that expired. I wanted a single place..." -->
+I built niv0 so that when someone asks me "do you have beats I can use?", I can answer with a single link. Artists can browse my beats, loops and sample packs, listen to everything and download what they need, instead of waiting for me to send files one by one. It was also an excuse to build a music app of my own and have full control over how my catalog is shown.
+
+The functionality is where I want it: an interactive catalog and a bridge to contact me. The UI and UX are still evolving while I find the look that fits.
 
 Frontend: [niv0web-frontend](https://github.com/NicolasQuirogaweb/niv0web-frontend) · Live site: [niv0web.vercel.app](https://niv0web.vercel.app)
 
@@ -134,8 +134,11 @@ These are things I know about and decided not to fix yet:
 - Cascade deletes don't run in a Mongo transaction.
 - API error messages are in Spanish. The admin panel is in Spanish and I'm its only user.
 
-<!-- ✍️ NICO: "What I'd do next" — 3 bullets max, the ones you'd actually do. Ideas: pagination,
-     cleaning up orphaned files in B2, TypeScript, a staging environment on Render. -->
+**What I'd do next**
+
+- A proper license flow: license types with their terms, and checkout. Today it's handled by contacting me directly.
+- Delete the files in B2 when a catalog or track is deleted, so the bucket doesn't accumulate orphans.
+- Pagination on the catalog endpoints, once the catalog grows enough to need it.
 
 ## Working with AI
 
@@ -145,8 +148,7 @@ I build this with Claude Code as a pair programmer. The repo carries the context
 - [`.claude/settings.json`](.claude/settings.json): which commands it can run without asking, no access to `.env`, and a hook that runs ESLint on every file it edits.
 - [`.claude/skills/`](.claude/skills): step-by-step guides for repetitive tasks (adding a resource type, the pre-release checklist).
 
-<!-- ✍️ NICO: one line about how you use it for real. E.g. "I review every diff before committing;
-     the agent proposes, I decide." or a concrete example of something it helped you catch. -->
+I use AI to move faster, not to stop thinking. I read what I ask for and what I get back, and I check every change before it goes in. It's a powerful tool, which is exactly why I keep studying it and following the practices that get the most out of it. This repo's setup is part of that.
 
 ## License
 

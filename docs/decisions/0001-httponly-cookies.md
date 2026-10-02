@@ -18,5 +18,3 @@ The migration was dual-mode for a while: the backend accepted both the cookie an
 - `SameSite=None` is needed because front and API are on different sites. Protection against cross-site requests then comes from the CORS allowlist, and it has to stay strict.
 - The `Authorization: Bearer` header is still accepted so the API can be tested with curl or Postman.
 - Refresh tokens rotate and are revoked on logout through `tokenVersion` on the user.
-
-<!-- ✍️ NICO: if you remember how you noticed the problem (a tutorial, a code review, reading about XSS), add it here in a line. -->
