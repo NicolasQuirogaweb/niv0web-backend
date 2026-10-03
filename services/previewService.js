@@ -6,7 +6,9 @@ const { uploadToB2 } = require('./b2Service');
 
 // Solo vale la pena para formatos pesados; un MP3 ya se reproduce rápido.
 const PREVIEW_SOURCE_EXTENSIONS = ['.wav'];
-const PREVIEW_FOLDERS = ['beats', 'loops', 'samples'];
+// Solo catálogos de beats y loops. Los sample packs quedan tal cual: son el aporte
+// libre a la comunidad y se escuchan y descargan en su formato original.
+const PREVIEW_FOLDERS = ['beats', 'loops'];
 const TRANSCODE_TIMEOUT_MS = 120000;
 // Un sample suelto en WAV pesa ~150 KB y ya arranca al instante; pasarlo a MP3 no
 // ayuda y le agrega el silencio inicial del encoder. Solo se convierten archivos grandes.

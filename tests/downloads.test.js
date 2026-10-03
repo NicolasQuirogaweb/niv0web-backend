@@ -77,7 +77,9 @@ describe('MP3 previews', () => {
   it('only applies to big WAV files in audio folders', () => {
     const big = 45 * 1024 * 1024;
     expect(needsPreview('a.wav', 'beats', big)).toBe(true);
-    expect(needsPreview('a.WAV', 'samples', big)).toBe(true);
+    expect(needsPreview('a.WAV', 'loops', big)).toBe(true);
+    // Los sample packs quedan en su formato original.
+    expect(needsPreview('a.wav', 'samples', big)).toBe(false);
     expect(needsPreview('a.mp3', 'beats', big)).toBe(false);
     expect(needsPreview('a.wav', 'images', big)).toBe(false);
     // Un one-shot de 150 KB ya arranca al instante.

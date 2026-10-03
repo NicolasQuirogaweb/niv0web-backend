@@ -16,7 +16,6 @@ const mongoose = require('mongoose');
 if (process.env.NODE_ENV !== 'production') dns.setServers(['8.8.8.8', '8.8.4.4']);
 const Beat = require('../models/Beat');
 const Loops = require('../models/Loops');
-const Samples = require('../models/Samples');
 const AudioPreview = require('../models/AudioPreview');
 const buildPublicUrl = require('../utils/buildPublicUrl');
 const { createPreview, MIN_PREVIEW_BYTES } = require('../services/previewService');
@@ -26,7 +25,8 @@ const dryRun = process.argv.includes('--dry-run');
 async function run() {
   await mongoose.connect(process.env.MONGODB_URI);
 
-  const collections = [['beats', Beat], ['loops', Loops], ['samples', Samples]];
+  // Los sample packs quedan tal cual (ver PREVIEW_FOLDERS en services/previewService.js).
+  const collections = [['beats', Beat], ['loops', Loops]];
   const pending = [];
   for (const [label, Model] of collections) {
     const docs = await Model.find({ audioFile: /\.wav$/i }).select('title audioFile').lean();
