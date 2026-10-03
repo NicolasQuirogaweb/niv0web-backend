@@ -11,7 +11,7 @@ flowchart LR
   A -- "verifyIdToken" --> G[Google]
 ```
 
-The API never serves audio. It stores the public B2 URL in Mongo, and the browser plays the file directly from B2. The one exception is `/api/download` (see below).
+The API never serves audio. It stores the public B2 URL in Mongo, and the browser plays the file directly from B2. Downloads go straight from B2 too, through a signed link (see below).
 
 ## Request pipeline
 
@@ -49,11 +49,17 @@ sequenceDiagram
 
 Multer holds uploads in memory, which is why there's a hard cap of 100 MB per file and 10 files per batch.
 
-## Download proxy
+## Downloads
 
-Browsers ignore `<a download>` for cross-origin files, so "download" on a B2 URL would just open the player. `/api/download?url=` streams the file back with `Content-Disposition: attachment`.
+Browsers ignore `<a download>` for cross-origin files, so a plain B2 URL would just open the player. `GET /api/download/link` asks B2 for a download authorization limited to that one file, valid for 5 minutes, with a forced `Content-Disposition: attachment; filename="<track title>.<ext>"`. The frontend points the browser at that link: the download starts right away with the browser's own progress bar, and the file never goes through the API.
 
-The URL comes from the client, so this is an SSRF risk if it isn't restricted. `utils/downloadSource.js` accepts only `https` URLs whose host ends in `.backblazeb2.com` and whose path or subdomain names our bucket. Look-alike hosts, credentials in the URL, other buckets and plain http are all rejected. The cases are in `tests/downloadSource.test.js`.
+`GET /api/download` is the previous approach: the API streams the file back with the attachment header. The frontend only uses it if the link can't be generated.
+
+Both take the URL from the client, so they're an SSRF risk if it isn't restricted. `utils/downloadSource.js` accepts only `https` URLs whose host ends in `.backblazeb2.com` and whose path or subdomain names our bucket. Look-alike hosts, credentials in the URL, other buckets and plain http are all rejected. The cases are in `tests/downloadSource.test.js`.
+
+## MP3 previews
+
+A WAV is about 45 MB; on a phone it takes several seconds before it can start playing. When a WAV bigger than 5 MB is uploaded to a beat or loop catalog, `services/previewService.js` converts it to a 192 kbps MP3 (~4 MB) with ffmpeg (`ffmpeg-static`, through pipes, no temp files) and stores it under `previews/`. The `AudioPreview` collection maps the original URL to the preview URL, and the public catalog routes add `previewFile` to the items that have one. The web player streams the preview; downloads always deliver the original WAV. Sample packs are left untouched on purpose: they are the free contribution to the community and are played and downloaded in their original format. In a batch upload the conversions run one at a time to stay inside Render's memory. `scripts/backfill-previews.js` does the same for files uploaded before this existed.
 
 ## Data model
 

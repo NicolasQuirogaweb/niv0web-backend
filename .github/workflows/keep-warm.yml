@@ -1,0 +1,19 @@
+name: Keep API warm
+
+# Render (plan Free) duerme el servicio tras 15 minutos sin tráfico y el primer
+# pedido después tarda 30-60 s. Esto lo llama cada 10 minutos para que no se duerma.
+# Ojo: GitHub pausa los crons de repos sin actividad por 60 días; si pasa, se
+# reactiva desde la pestaña Actions.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health
+        run: curl -fsS --retry 3 --retry-delay 10 --max-time 90 https://niv0web-api.onrender.com/health

@@ -9,7 +9,16 @@ const axios = require('axios');
 const { generalLimiter, authLimiter } = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 const ApiError = require('./utils/ApiError');
-const { isAllowedDownloadUrl, safeFilename } = require('./utils/downloadSource');
+const {
+  isAllowedDownloadUrl,
+  isLicensedOriginal,
+  safeFilename,
+  bucketKeyFromUrl,
+  attachmentDisposition,
+  downloadFilename,
+} = require('./utils/downloadSource');
+const { getDownloadLink } = require('./services/b2Service');
+const { success } = require('./utils/response');
 const authRoutes = require('./routes/auth');
 const resourceRoutes = require('./routes/resourceRoutes');
 const adminRoutes = require('./routes/adminRoutes');
@@ -55,10 +64,35 @@ app.use('/api/auth', authRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Link firmado para que el navegador descargue directo de B2, con su propia barra
+// de progreso y sin que el archivo pase por este servidor. Es lo que usa el front;
+// /api/download (el proxy de abajo) queda como fallback.
+app.get('/api/download/link', async (req, res, next) => {
+  const { url, name } = req.query;
+  if (typeof url !== 'string' || !url) return next(ApiError.badRequest('Falta el parámetro url'));
+  if (!isAllowedDownloadUrl(url)) return next(ApiError.badRequest('Origen de descarga no válido', 'INVALID_DOWNLOAD_SOURCE'));
+  if (isLicensedOriginal(bucketKeyFromUrl(url))) {
+    return next(ApiError.forbidden('El WAV de este beat viene con la licencia', 'LICENSE_REQUIRED'));
+  }
+
+  try {
+    const key = bucketKeyFromUrl(url);
+    const filename = downloadFilename(key, name);
+    const link = await getDownloadLink(key, attachmentDisposition(filename));
+    res.set('Cache-Control', 'no-store');
+    success(res, { url: link, filename });
+  } catch (err) {
+    next(err.statusCode ? err : new ApiError(502, 'No se pudo generar el link de descarga', 'DOWNLOAD_LINK_FAILED'));
+  }
+});
+
 app.get('/api/download', async (req, res, next) => {
   const { url } = req.query;
   if (typeof url !== 'string' || !url) return next(ApiError.badRequest('Falta el parámetro url'));
   if (!isAllowedDownloadUrl(url)) return next(ApiError.badRequest('Origen de descarga no válido', 'INVALID_DOWNLOAD_SOURCE'));
+  if (isLicensedOriginal(bucketKeyFromUrl(url))) {
+    return next(ApiError.forbidden('El WAV de este beat viene con la licencia', 'LICENSE_REQUIRED'));
+  }
 
   try {
     const upstream = await axios({ url, method: 'GET', responseType: 'stream', timeout: 30000, maxRedirects: 0 });

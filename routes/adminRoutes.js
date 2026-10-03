@@ -7,6 +7,7 @@ const { uploadLimiter } = require('../middleware/rateLimiter');
 const asyncHandler = require('../middleware/asyncHandler');
 const validate = require('../middleware/validate');
 const { uploadToB2 } = require('../services/b2Service');
+const { tryCreatePreview } = require('../services/previewService');
 const ApiError = require('../utils/ApiError');
 const countByParent = require('../utils/countByParent');
 const { success } = require('../utils/response');
@@ -91,7 +92,9 @@ router.post('/upload', adminAuth, uploadLimiter, upload.single('file'), asyncHan
   if (!req.file) throw ApiError.badRequest('No se envió ningún archivo');
   const folder = resolveFolder(req.body.folder);
   const result = await uploadToB2(req.file.buffer, req.file.originalname, folder, req.file.mimetype);
-  success(res, result);
+  // Un WAV pesado también se guarda en MP3 para escucharlo rápido en la web.
+  const previewUrl = await tryCreatePreview(req.file, folder, result.url);
+  success(res, { ...result, previewUrl });
 }));
 
 router.post('/upload/batch', adminAuth, uploadLimiter, upload.array('files', MAX_BATCH_FILES), asyncHandler(async (req, res) => {
@@ -100,6 +103,12 @@ router.post('/upload/batch', adminAuth, uploadLimiter, upload.array('files', MAX
   const settled = await Promise.allSettled(
     req.files.map(file => uploadToB2(file.buffer, file.originalname, folder, file.mimetype))
   );
+  // Previews de a uno: cada ffmpeg usa memoria y Render Free tiene 512 MB.
+  for (let i = 0; i < req.files.length; i++) {
+    if (settled[i].status !== 'fulfilled') continue;
+    const previewUrl = await tryCreatePreview(req.files[i], folder, settled[i].value.url);
+    if (previewUrl) settled[i].value.previewUrl = previewUrl;
+  }
   const urls = [];
   const errors = [];
   const results = req.files.map((file, i) => {

@@ -119,4 +119,38 @@ const uploadToB2 = async (fileBuffer, fileName, folder = 'uploads', mimeType = '
   throw uploadError;
 };
 
-module.exports = { uploadToB2, resolveMimeType, ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS };
+// Link de descarga directa desde B2, válido unos minutos y con Content-Disposition
+// "attachment": el navegador lo baja con su propia barra de progreso, sin pasar
+// el archivo por este servidor. Requiere que la key tenga la capability shareFiles.
+const DOWNLOAD_LINK_TTL_SECONDS = 300;
+
+const getDownloadLink = async (key, disposition) => {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (!b2.authorizationToken || attempt > 0) await authorize();
+      const { data } = await b2.getDownloadAuthorization({
+        bucketId: process.env.B2_BUCKET_ID,
+        fileNamePrefix: key,
+        validDurationInSeconds: DOWNLOAD_LINK_TTL_SECONDS,
+        b2ContentDisposition: disposition,
+      });
+      const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+      const params = new URLSearchParams({
+        Authorization: data.authorizationToken,
+        b2ContentDisposition: disposition,
+      });
+      return `${b2.downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${encodedKey}?${params}`;
+    } catch (err) {
+      const status = err.response?.status;
+      // Token de cuenta vencido: se reautoriza una vez y se reintenta.
+      if ((status === 401 || status === 403) && attempt === 0) continue;
+      const linkError = new Error('No se pudo generar el link de descarga');
+      linkError.statusCode = 502;
+      linkError.code = 'DOWNLOAD_LINK_FAILED';
+      linkError.cause = err;
+      throw linkError;
+    }
+  }
+};
+
+module.exports = { uploadToB2, getDownloadLink, resolveMimeType, ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS };

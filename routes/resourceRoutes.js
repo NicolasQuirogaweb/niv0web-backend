@@ -5,6 +5,13 @@ const asyncHandler = require('../middleware/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const buildPublicUrl = require('../utils/buildPublicUrl');
 const countByParent = require('../utils/countByParent');
+const { attachPreviews, exposeBeatPreviews } = require('../services/previewService');
+
+// Agrega los previews MP3 y, en beats, reemplaza el WAV por su MP3.
+const publicTracks = async (resourceType, items) => {
+  const withPreviews = await attachPreviews(items.map(withFileUrl));
+  return resourceType === 'beats' ? exposeBeatPreviews(withPreviews) : withPreviews;
+};
 const { success } = require('../utils/response');
 
 const Playlist = require('../models/Playlist');
@@ -61,7 +68,7 @@ router.get('/:resourceType', asyncHandler(async (req, res) => {
   if (!resource) throw ApiError.badRequest('Tipo de recurso no válido');
 
   const items = await resource.model.find().sort({ createdAt: -1 }).lean();
-  success(res, items.map(withFileUrl));
+  success(res, await publicTracks(req.params.resourceType, items));
 }));
 
 router.get('/:resourceType/playlist/:playlistId', asyncHandler(async (req, res) => {
@@ -88,7 +95,7 @@ router.get('/:resourceType/playlist/:playlistId', asyncHandler(async (req, res) 
     ...playlist,
     imageUrl: buildPublicUrl(playlist.imageUrl),
     backgroundVideo: buildPublicUrl(playlist.backgroundVideo),
-    [resource.responseKey]: items.map(withFileUrl),
+    [resource.responseKey]: await publicTracks(resourceType, items),
   });
 }));
 

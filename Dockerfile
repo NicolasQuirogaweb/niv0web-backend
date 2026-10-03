@@ -6,6 +6,8 @@ WORKDIR /app
 # Primero solo el lockfile: si no cambian las dependencias, Docker reutiliza esta capa.
 COPY package*.json .npmrc ./
 RUN npm ci --omit=dev && npm cache clean --force
+# Si el binario de ffmpeg-static no corre en Alpine, que falle el build y no el primer upload de un WAV.
+RUN node -e "require('child_process').execFileSync(require('ffmpeg-static'), ['-hide_banner', '-version'], { stdio: 'ignore' })"
 
 COPY --chown=node:node . .
 

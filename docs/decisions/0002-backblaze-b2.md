@@ -15,6 +15,6 @@ I picked B2 over S3 for cost: for a personal catalog that's mostly read, storage
 ## Consequences
 
 - The API is stateless and can be redeployed without losing anything.
-- Forcing a download needs a proxy (`/api/download`), because browsers ignore `download` on cross-origin links. That proxy has to be locked to our bucket (see [architecture](../architecture.md#download-proxy)).
+- Forcing a download needs help, because browsers ignore `download` on cross-origin links. First it was a proxy (`/api/download`); now it's a signed B2 link ([0004](0004-direct-downloads-from-b2.md)). Either way the URL has to be locked to our bucket (see [architecture](../architecture.md#downloads)).
 - Deleting a catalog doesn't delete its files in B2 yet. That's a known limitation.
 - **Incident.** One day uploads from the admin panel started failing in production with a mix of 401 and 500 errors. My first suspicion was the login: a 401 usually means an expired session, and the frontend even tried to refresh it on its own. The Render logs told a different story. The 401 came from Backblaze itself, which was rejecting the application key when the API tried to authorize. The fix was a new key in Render. But I also learned that a third-party error can't reach the client looking like *our* auth error, so now storage failures come back as a 502 and the frontend no longer confuses them with an expired session.
