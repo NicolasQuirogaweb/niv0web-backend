@@ -8,7 +8,12 @@
 // Es idempotente: un WAV que ya tiene preview se saltea.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const path = require('path');
+const dns = require('dns');
 const mongoose = require('mongoose');
+
+// Mismo arreglo que config/db.js: en algunos Windows Node resuelve DNS contra
+// 127.0.0.1 y falla la resolución SRV de mongodb+srv://.
+if (process.env.NODE_ENV !== 'production') dns.setServers(['8.8.8.8', '8.8.4.4']);
 const Beat = require('../models/Beat');
 const Loops = require('../models/Loops');
 const Samples = require('../models/Samples');
