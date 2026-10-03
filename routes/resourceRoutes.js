@@ -5,6 +5,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const buildPublicUrl = require('../utils/buildPublicUrl');
 const countByParent = require('../utils/countByParent');
+const { attachPreviews } = require('../services/previewService');
 const { success } = require('../utils/response');
 
 const Playlist = require('../models/Playlist');
@@ -61,7 +62,7 @@ router.get('/:resourceType', asyncHandler(async (req, res) => {
   if (!resource) throw ApiError.badRequest('Tipo de recurso no válido');
 
   const items = await resource.model.find().sort({ createdAt: -1 }).lean();
-  success(res, items.map(withFileUrl));
+  success(res, await attachPreviews(items.map(withFileUrl)));
 }));
 
 router.get('/:resourceType/playlist/:playlistId', asyncHandler(async (req, res) => {
@@ -88,7 +89,7 @@ router.get('/:resourceType/playlist/:playlistId', asyncHandler(async (req, res) 
     ...playlist,
     imageUrl: buildPublicUrl(playlist.imageUrl),
     backgroundVideo: buildPublicUrl(playlist.backgroundVideo),
-    [resource.responseKey]: items.map(withFileUrl),
+    [resource.responseKey]: await attachPreviews(items.map(withFileUrl)),
   });
 }));
 
