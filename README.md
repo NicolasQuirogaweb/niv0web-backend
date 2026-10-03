@@ -83,7 +83,7 @@ Every response has the shape `{ success, data, meta }` or `{ success: false, mes
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/download/link?url=&name=` | Signed B2 link (valid 5 min) that downloads the file as an attachment named after the track. The browser downloads straight from B2 ([ADR 0004](docs/decisions/0004-direct-downloads-from-b2.md)). |
+| GET | `/api/download/link?url=&name=` | Beat WAVs are refused with `403 LICENSE_REQUIRED` (they come with the license; the public catalog only exposes their MP3). Otherwise: signed B2 link (valid 5 min) that downloads the file as an attachment named after the track. The browser downloads straight from B2 ([ADR 0004](docs/decisions/0004-direct-downloads-from-b2.md)). |
 | GET | `/api/download?url=` | Older proxy that streams the file through the API. Kept as a fallback. Both only accept URLs from our bucket ([why](docs/architecture.md#downloads)). |
 | GET | `/health` | `{ ok, db }`. Render and the Docker `HEALTHCHECK` use it. |
 

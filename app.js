@@ -11,6 +11,7 @@ const errorHandler = require('./middleware/errorHandler');
 const ApiError = require('./utils/ApiError');
 const {
   isAllowedDownloadUrl,
+  isLicensedOriginal,
   safeFilename,
   bucketKeyFromUrl,
   attachmentDisposition,
@@ -70,6 +71,9 @@ app.get('/api/download/link', async (req, res, next) => {
   const { url, name } = req.query;
   if (typeof url !== 'string' || !url) return next(ApiError.badRequest('Falta el parámetro url'));
   if (!isAllowedDownloadUrl(url)) return next(ApiError.badRequest('Origen de descarga no válido', 'INVALID_DOWNLOAD_SOURCE'));
+  if (isLicensedOriginal(bucketKeyFromUrl(url))) {
+    return next(ApiError.forbidden('El WAV de este beat viene con la licencia', 'LICENSE_REQUIRED'));
+  }
 
   try {
     const key = bucketKeyFromUrl(url);
@@ -86,6 +90,9 @@ app.get('/api/download', async (req, res, next) => {
   const { url } = req.query;
   if (typeof url !== 'string' || !url) return next(ApiError.badRequest('Falta el parámetro url'));
   if (!isAllowedDownloadUrl(url)) return next(ApiError.badRequest('Origen de descarga no válido', 'INVALID_DOWNLOAD_SOURCE'));
+  if (isLicensedOriginal(bucketKeyFromUrl(url))) {
+    return next(ApiError.forbidden('El WAV de este beat viene con la licencia', 'LICENSE_REQUIRED'));
+  }
 
   try {
     const upstream = await axios({ url, method: 'GET', responseType: 'stream', timeout: 30000, maxRedirects: 0 });

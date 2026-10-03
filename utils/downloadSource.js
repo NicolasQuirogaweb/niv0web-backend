@@ -71,4 +71,8 @@ const downloadFilename = (key, requestedName) => {
   return `${clean || 'download'}${ext}`;
 };
 
-module.exports = { isAllowedDownloadUrl, safeFilename, bucketKeyFromUrl, attachmentDisposition, downloadFilename };
+// El WAV original de un beat se entrega con la licencia, no gratis: la web solo
+// expone su versión MP3. Esto evita que se baje por los endpoints de descarga.
+const isLicensedOriginal = (key) => /^beats\/.+\.wav$/i.test(key);
+
+module.exports = { isLicensedOriginal, isAllowedDownloadUrl, safeFilename, bucketKeyFromUrl, attachmentDisposition, downloadFilename };

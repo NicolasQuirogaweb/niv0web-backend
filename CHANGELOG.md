@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file star
 ### Added
 - `GET /api/download/link`: signed, single-file B2 link that downloads as an attachment named after the track, so the browser downloads directly from B2 with its own progress bar.
 - MP3 previews (192 kbps) for WAVs over 5 MB in beat and loop catalogs (sample packs stay untouched), exposed as `previewFile` in the public catalog. `scripts/backfill-previews.js` for existing files.
+- Beat WAVs are no longer handed out for free: the public catalog exposes their MP3 and the download endpoints answer `403 LICENSE_REQUIRED` for a beat WAV. Sample pack WAVs stay free.
 - `keep-warm` workflow that pings `/health` every 10 minutes so Render's free plan doesn't sleep.
 
 

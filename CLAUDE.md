@@ -22,6 +22,7 @@ Run `npm run lint && npm test` before saying a change is done.
 - New request bodies need express-validator rules plus `validate`. PUT routes reuse the POST rules made optional (`asOptional` in `routes/adminRoutes.js`).
 - Counting children per parent: use `utils/countByParent.js`, never a `countDocuments` per item.
 - MP3 previews are derived from the original file (`AudioPreview`, keyed by source URL). Never edit them by hand or treat them as the source of truth: downloads always use `audioFile`. Generating one must never fail an upload (`tryCreatePreview`). Run conversions sequentially, not in parallel (Render Free has 512 MB). Previews are only for beats and loops: sample packs stay in their original format on purpose.
+- Beat WAVs are sold with the license: the public catalog swaps them for their MP3 (`exposeBeatPreviews`) and the download endpoints refuse them (`isLicensedOriginal`). Don't expose a beat WAV URL in any public response. Sample pack WAVs stay free.
 - Commits: conventional commits (`fix:`, `feat:`, `chore:`, `test:`, `docs:`), imperative, and a body that explains why.
 
 ## Security rules (don't regress these)

@@ -12,7 +12,8 @@ Two complaints from using the site on a phone:
 ## Decision
 
 - **Downloads:** `GET /api/download/link` returns a B2 download authorization for that single file (valid 5 minutes) with `b2ContentDisposition=attachment; filename="<title>.<ext>"`. The browser downloads straight from B2 with its own progress UI. The proxy stays as a fallback.
-- **Playback:** WAVs uploaded to audio folders get a 192 kbps MP3 preview (~4 MB, ~10x smaller). It's stored as a derived artifact (`AudioPreview`, keyed by the original URL), so the catalog models and admin forms didn't change. The player uses the preview; downloads always deliver the original.
+- **Beat WAVs are licensed, not free.** The public catalog exposes only the MP3 of a beat (for listening and for the free download); both download endpoints refuse a beat WAV with `403 LICENSE_REQUIRED`. The WAV is delivered with the license, outside the site for now. Sample packs are the opposite: free, in their original format, as a contribution to the community.
+- **Playback:** WAVs over 5 MB in beat and loop catalogs get a 192 kbps MP3 preview (~4 MB, ~10x smaller). It's stored as a derived artifact (`AudioPreview`, keyed by the original URL), so the catalog models and admin forms didn't change. The player uses the preview; downloads always deliver the original.
 
 ## Consequences
 

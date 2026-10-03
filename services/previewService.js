@@ -80,4 +80,10 @@ const attachPreviews = async (items) => {
   return items.map((i) => (byUrl[i.audioFile] ? { ...i, previewFile: byUrl[i.audioFile] } : i));
 };
 
-module.exports = { MIN_PREVIEW_BYTES, needsPreview, transcodeToMp3, createPreview, tryCreatePreview, attachPreviews };
+// Beats: la web expone solo el MP3 (para escuchar y para la descarga gratis); el
+// WAV original se entrega con la licencia. Si un WAV todavía no tiene MP3, queda
+// para escuchar pero la descarga lo rechaza (isLicensedOriginal).
+const exposeBeatPreviews = (items) =>
+  items.map(({ previewFile, ...item }) => (previewFile ? { ...item, audioFile: previewFile } : item));
+
+module.exports = { exposeBeatPreviews, MIN_PREVIEW_BYTES, needsPreview, transcodeToMp3, createPreview, tryCreatePreview, attachPreviews };
