@@ -83,12 +83,13 @@ Every response has the shape `{ success, data, meta }` or `{ success: false, mes
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/download?url=` | Proxy that forces a download. It only accepts URLs from our bucket ([why](docs/architecture.md#download-proxy)). |
+| GET | `/api/download/link?url=&name=` | Signed B2 link (valid 5 min) that downloads the file as an attachment named after the track. The browser downloads straight from B2 ([ADR 0004](docs/decisions/0004-direct-downloads-from-b2.md)). |
+| GET | `/api/download?url=` | Older proxy that streams the file through the API. Kept as a fallback. Both only accept URLs from our bucket ([why](docs/architecture.md#downloads)). |
 | GET | `/health` | `{ ok, db }`. Render and the Docker `HEALTHCHECK` use it. |
 
 **Admin** (`/api/admin`). Every route needs an admin, and the role is read from the database on each request.
 
-- `POST /upload`, `POST /upload/batch`: multipart, up to 100 MB per file and 10 files per batch, 60 per minute. `folder` must be one of `uploads, beats, samples, loops, prodmixmasters, images, videos`.
+- `POST /upload`, `POST /upload/batch`: multipart, up to 100 MB per file and 10 files per batch, 60 per minute. `folder` must be one of `uploads, beats, samples, loops, prodmixmasters, images, videos`. A WAV uploaded to `beats`, `loops` or `samples` also gets an MP3 preview (192 kbps) for playback; the response includes `previewUrl` (or `null` if the conversion failed, which never fails the upload).
 - `GET|POST /playlists`, `PUT|DELETE /playlists/:id`, `POST /playlists/:id/duplicate`
 - `GET|POST /playlists/:id/beats`, `POST /playlists/:id/beats/batch`, `PUT|DELETE /beats/:id`
 - `GET|POST /playlists/:id/loops`, `POST /playlists/:id/loops/batch`, `PUT|DELETE /loops/:id`
@@ -124,6 +125,7 @@ Short write-ups of the choices that shaped the code, with the trade-offs I accep
 - [0001 — Tokens in httpOnly cookies, not localStorage](docs/decisions/0001-httponly-cookies.md)
 - [0002 — Files in Backblaze B2, not on the server](docs/decisions/0002-backblaze-b2.md)
 - [0003 — Docker on Render](docs/decisions/0003-docker-on-render.md)
+- [0004 — Direct downloads from B2, and MP3 previews for WAVs](docs/decisions/0004-direct-downloads-from-b2.md)
 
 ## Known limitations
 
@@ -133,6 +135,7 @@ These are things I know about and decided not to fix yet:
 - Deleting a catalog removes its documents but not the files in B2. The files stay orphaned in the bucket.
 - Cascade deletes don't run in a Mongo transaction.
 - API error messages are in Spanish. The admin panel is in Spanish and I'm its only user.
+- Render's free plan sleeps after 15 minutes. A GitHub Actions cron (`.github/workflows/keep-warm.yml`) pings `/health` every 10 minutes to keep it awake. GitHub pauses scheduled workflows after 60 days without repo activity; if that happens, re-enable it from the Actions tab.
 
 **What I'd do next**
 
