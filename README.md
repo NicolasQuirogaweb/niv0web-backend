@@ -89,7 +89,7 @@ Every response has the shape `{ success, data, meta }` or `{ success: false, mes
 
 **Admin** (`/api/admin`). Every route needs an admin, and the role is read from the database on each request.
 
-- `POST /upload`, `POST /upload/batch`: multipart, up to 100 MB per file and 10 files per batch, 60 per minute. `folder` must be one of `uploads, beats, samples, loops, prodmixmasters, images, videos`. A WAV uploaded to `beats`, `loops` or `samples` also gets an MP3 preview (192 kbps) for playback; the response includes `previewUrl` (or `null` if the conversion failed, which never fails the upload).
+- `POST /upload`, `POST /upload/batch`: multipart, up to 100 MB per file and 10 files per batch, 60 per minute. `folder` must be one of `uploads, beats, samples, loops, prodmixmasters, images, videos`. A WAV over 5 MB uploaded to `beats`, `loops` or `samples` also gets an MP3 preview (192 kbps) for playback; the response includes `previewUrl` (or `null` if the conversion failed, which never fails the upload).
 - `GET|POST /playlists`, `PUT|DELETE /playlists/:id`, `POST /playlists/:id/duplicate`
 - `GET|POST /playlists/:id/beats`, `POST /playlists/:id/beats/batch`, `PUT|DELETE /beats/:id`
 - `GET|POST /playlists/:id/loops`, `POST /playlists/:id/loops/batch`, `PUT|DELETE /loops/:id`

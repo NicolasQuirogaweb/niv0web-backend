@@ -8,10 +8,14 @@ const { uploadToB2 } = require('./b2Service');
 const PREVIEW_SOURCE_EXTENSIONS = ['.wav'];
 const PREVIEW_FOLDERS = ['beats', 'loops', 'samples'];
 const TRANSCODE_TIMEOUT_MS = 120000;
+// Un sample suelto en WAV pesa ~150 KB y ya arranca al instante; pasarlo a MP3 no
+// ayuda y le agrega el silencio inicial del encoder. Solo se convierten archivos grandes.
+const MIN_PREVIEW_BYTES = 5 * 1024 * 1024;
 
-const needsPreview = (fileName, folder) =>
+const needsPreview = (fileName, folder, size) =>
   PREVIEW_FOLDERS.includes(folder) &&
-  PREVIEW_SOURCE_EXTENSIONS.includes(path.extname(fileName || '').toLowerCase());
+  PREVIEW_SOURCE_EXTENSIONS.includes(path.extname(fileName || '').toLowerCase()) &&
+  size >= MIN_PREVIEW_BYTES;
 
 // WAV -> MP3 192 kbps, todo por pipes (sin archivos temporales en disco).
 const transcodeToMp3 = (inputBuffer) =>
@@ -56,7 +60,7 @@ const createPreview = async (sourceBuffer, originalName, sourceUrl) => {
 
 // Para el upload: nunca hace fallar la subida. Sin preview se reproduce el original.
 const tryCreatePreview = async (file, folder, sourceUrl) => {
-  if (!needsPreview(file.originalname, folder)) return null;
+  if (!needsPreview(file.originalname, folder, file.buffer.length)) return null;
   try {
     return await createPreview(file.buffer, file.originalname, sourceUrl);
   } catch (err) {
@@ -74,4 +78,4 @@ const attachPreviews = async (items) => {
   return items.map((i) => (byUrl[i.audioFile] ? { ...i, previewFile: byUrl[i.audioFile] } : i));
 };
 
-module.exports = { needsPreview, transcodeToMp3, createPreview, tryCreatePreview, attachPreviews };
+module.exports = { MIN_PREVIEW_BYTES, needsPreview, transcodeToMp3, createPreview, tryCreatePreview, attachPreviews };

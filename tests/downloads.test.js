@@ -74,11 +74,14 @@ describe('GET /api/download/link', () => {
 });
 
 describe('MP3 previews', () => {
-  it('only applies to WAV files in audio folders', () => {
-    expect(needsPreview('a.wav', 'beats')).toBe(true);
-    expect(needsPreview('a.WAV', 'samples')).toBe(true);
-    expect(needsPreview('a.mp3', 'beats')).toBe(false);
-    expect(needsPreview('a.wav', 'images')).toBe(false);
+  it('only applies to big WAV files in audio folders', () => {
+    const big = 45 * 1024 * 1024;
+    expect(needsPreview('a.wav', 'beats', big)).toBe(true);
+    expect(needsPreview('a.WAV', 'samples', big)).toBe(true);
+    expect(needsPreview('a.mp3', 'beats', big)).toBe(false);
+    expect(needsPreview('a.wav', 'images', big)).toBe(false);
+    // Un one-shot de 150 KB ya arranca al instante.
+    expect(needsPreview('kick.wav', 'samples', 150 * 1024)).toBe(false);
   });
 
   it('attaches previewFile to WAV items that have one', async () => {
@@ -94,7 +97,7 @@ describe('MP3 previews', () => {
   });
 
   it('a failed conversion never breaks the upload (returns null)', async () => {
-    const file = { originalname: 'roto.wav', buffer: Buffer.from('esto no es un wav') };
+    const file = { originalname: 'roto.wav', buffer: Buffer.alloc(6 * 1024 * 1024) };
     await expect(tryCreatePreview(file, 'beats', WAV)).resolves.toBeNull();
   });
 

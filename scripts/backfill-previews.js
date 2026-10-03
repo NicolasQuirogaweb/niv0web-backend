@@ -19,7 +19,7 @@ const Loops = require('../models/Loops');
 const Samples = require('../models/Samples');
 const AudioPreview = require('../models/AudioPreview');
 const buildPublicUrl = require('../utils/buildPublicUrl');
-const { createPreview } = require('../services/previewService');
+const { createPreview, MIN_PREVIEW_BYTES } = require('../services/previewService');
 
 const dryRun = process.argv.includes('--dry-run');
 
@@ -33,12 +33,16 @@ async function run() {
     for (const doc of docs) {
       const sourceUrl = buildPublicUrl(doc.audioFile);
       const exists = await AudioPreview.exists({ sourceUrl });
-      if (!exists) pending.push({ label, title: doc.title, sourceUrl });
+      if (exists) continue;
+      // Igual que en el upload: los WAV chicos (samples sueltos) no necesitan preview.
+      const head = await fetch(sourceUrl, { method: 'HEAD' });
+      const size = Number(head.headers.get('content-length')) || 0;
+      if (size >= MIN_PREVIEW_BYTES) pending.push({ label, title: doc.title, sourceUrl, size });
     }
   }
 
   console.log(`${pending.length} WAV sin preview${dryRun ? ' (dry-run, no se cambia nada)' : ''}`);
-  pending.forEach((p) => console.log(`  - [${p.label}] ${p.title}`));
+  pending.forEach((p) => console.log(`  - [${p.label}] ${p.title} (${(p.size / 1e6).toFixed(1)} MB)`));
 
   if (!dryRun) {
     let ok = 0;
