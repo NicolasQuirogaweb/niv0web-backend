@@ -1,0 +1,21 @@
+name: Refresh discography
+
+# Actualiza el cache de la discografía de Spotify (página About) cada 6 horas.
+# Render (plan Free) se duerme y no puede mantener su propio timer, así que lo
+# dispara este cron. Necesita el secret JOBS_TOKEN del repo, igual al de Render.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/jobs/refresh-discography
+        run: |
+          curl -fsS --retry 3 --retry-delay 20 --max-time 120 -X POST \
+            -H "Authorization: Bearer ${{ secrets.JOBS_TOKEN }}" \
+            https://niv0web-api.onrender.com/api/jobs/refresh-discography

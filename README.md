@@ -139,7 +139,7 @@ These are things I know about and decided not to fix yet:
 - Deleting a catalog removes its documents but not the files in B2. The files stay orphaned in the bucket.
 - Cascade deletes don't run in a Mongo transaction.
 - API error messages are in Spanish. The admin panel is in Spanish and I'm its only user.
-- Render's free plan sleeps after 15 minutes. A GitHub Actions cron (`.github/workflows/keep-warm.yml`) pings `/health` every 10 minutes to keep it awake. GitHub pauses scheduled workflows after 60 days without repo activity; if that happens, re-enable it from the Actions tab.
+- Render's free plan sleeps after 15 minutes. A GitHub Actions cron (`.github/workflows/keep-warm.yml`) pings `/health` every 10 minutes to keep it awake. GitHub pauses scheduled workflows after 60 days without repo activity; if that happens, re-enable it from the Actions tab. The discography is refreshed the same way by `.github/workflows/refresh-discography.yml` every 6 hours; it needs the repo secret `JOBS_TOKEN` (the same value as in Render).
 
 **What I'd do next**
 
