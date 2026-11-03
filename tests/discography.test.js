@@ -3,7 +3,7 @@ const request = require('supertest');
 jest.mock('../models/SpotifyAlbum');
 
 const SpotifyAlbum = require('../models/SpotifyAlbum');
-const { fetchArtistReleases } = require('../services/spotifyService');
+const { fetchArtistReleases, resetRefreshState } = require('../services/spotifyService');
 const app = require('../app');
 
 const JOBS_TOKEN = 'j'.repeat(40);
@@ -37,6 +37,7 @@ const mockSpotify = (albumsPages = [{ items: [SPOTIFY_ALBUM], next: null }]) => 
 const findChain = (docs) => ({ sort: () => ({ lean: () => Promise.resolve(docs) }) });
 
 beforeEach(() => {
+  resetRefreshState(); // el estado del refresco es del módulo: cada test arranca limpio
   Object.assign(process.env, {
     SPOTIFY_CLIENT_ID: 'cid',
     SPOTIFY_CLIENT_SECRET: 'csecret',
@@ -62,7 +63,8 @@ describe('fetchArtistReleases', () => {
     expect(String(tokenInit.body)).toContain('grant_type=client_credentials');
     expect(tokenInit.headers.Authorization).toBe(`Basic ${Buffer.from('cid:csecret').toString('base64')}`);
     expect(fetchSpy.mock.calls[1][0]).toBe(
-      'https://api.spotify.com/v1/artists/artist123/albums?include_groups=album,single&limit=50'
+      // market evita que Spotify devuelva el mismo lanzamiento varias veces (versiones regionales).
+      'https://api.spotify.com/v1/artists/artist123/albums?include_groups=album,single&market=AR&limit=50'
     );
     expect(albums).toEqual([
       {
@@ -114,6 +116,22 @@ describe('GET /api/discography', () => {
     expect(fetchSpy).toHaveBeenCalled();
   });
 
+  it('after a failed background refresh it waits before trying again (no hammering a rate-limited Spotify)', async () => {
+    const { resetRefreshState } = require('../services/spotifyService');
+    resetRefreshState();
+    SpotifyAlbum.find.mockReturnValue(findChain([]));
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(jsonResponse({}, 429));
+
+    await request(app).get('/api/discography');
+    await new Promise((resolve) => setImmediate(resolve));
+    const callsAfterFirst = fetchSpy.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThan(0);
+
+    await request(app).get('/api/discography');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(fetchSpy.mock.calls.length).toBe(callsAfterFirst);
+  });
+
   it('returns an empty list when Spotify is not configured', async () => {
     delete process.env.SPOTIFY_ARTIST_ID;
     const fetchSpy = jest.spyOn(global, 'fetch');
@@ -137,8 +155,14 @@ describe('POST /api/jobs/refresh-discography', () => {
     const res = await refresh().set('Authorization', `Bearer ${JOBS_TOKEN}`);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({ count: 1 });
-    expect(SpotifyAlbum.deleteMany).toHaveBeenCalled();
-    expect(SpotifyAlbum.insertMany).toHaveBeenCalledWith([expect.objectContaining({ spotifyId: 'alb1' })]);
+    // Upsert por spotifyId y recién después se borra lo que ya no está: el cache nunca queda vacío.
+    expect(SpotifyAlbum.bulkWrite).toHaveBeenCalledWith([
+      expect.objectContaining({
+        updateOne: expect.objectContaining({ filter: { spotifyId: 'alb1' }, upsert: true }),
+      }),
+    ]);
+    expect(SpotifyAlbum.deleteMany).toHaveBeenCalledWith({ spotifyId: { $nin: ['alb1'] } });
+    expect(SpotifyAlbum.insertMany).not.toHaveBeenCalled();
   });
 
   it('keeps the old cache when Spotify fails', async () => {
@@ -147,6 +171,42 @@ describe('POST /api/jobs/refresh-discography', () => {
     expect(res.status).toBe(502);
     expect(res.body.code).toBe('SPOTIFY_UNAVAILABLE');
     expect(SpotifyAlbum.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('a failed write never empties the cache', async () => {
+    mockSpotify();
+    SpotifyAlbum.bulkWrite.mockRejectedValue(new Error('mongo hiccup'));
+    const res = await refresh().set('Authorization', `Bearer ${JOBS_TOKEN}`);
+    expect(res.status).toBe(502);
+    expect(SpotifyAlbum.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('a network error or a hang is a 502, and every Spotify call has a timeout', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
+    const res = await refresh().set('Authorization', `Bearer ${JOBS_TOKEN}`);
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe('SPOTIFY_UNAVAILABLE');
+    expect(fetchSpy.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('runs only one refresh at a time', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      if (String(url).startsWith('https://accounts.spotify.com')) {
+        await gate;
+        return jsonResponse({ access_token: 'tok' });
+      }
+      return jsonResponse({ items: [SPOTIFY_ALBUM], next: null });
+    });
+    const { refreshDiscography } = require('../services/spotifyService');
+
+    const first = refreshDiscography();
+    const second = refreshDiscography();
+    release();
+    await expect(Promise.all([first, second])).resolves.toEqual([1, 1]);
+    const tokenCalls = fetchSpy.mock.calls.filter(([u]) => String(u).startsWith('https://accounts.spotify.com'));
+    expect(tokenCalls).toHaveLength(1);
   });
 
   it('does nothing when Spotify is not configured', async () => {
