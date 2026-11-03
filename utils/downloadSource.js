@@ -71,8 +71,9 @@ const downloadFilename = (key, requestedName) => {
   return `${clean || 'download'}${ext}`;
 };
 
-// El WAV original de un beat se entrega con la licencia, no gratis: la web solo
-// expone su versión MP3. Esto evita que se baje por los endpoints de descarga.
-const isLicensedOriginal = (key) => /^beats\/.+\.wav$/i.test(key);
+// Los beats se venden con licencia: ningún archivo de beats (ni el original ni su
+// preview MP3) se descarga gratis por estos endpoints. Los sample packs y los
+// loops sí, son el aporte libre a la comunidad.
+const isLicensedOriginal = (key) => /^(beats|previews)\//i.test(key);
 
 module.exports = { isLicensedOriginal, isAllowedDownloadUrl, safeFilename, bucketKeyFromUrl, attachmentDisposition, downloadFilename };

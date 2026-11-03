@@ -22,3 +22,7 @@ Two complaints from using the site on a phone:
 - The B2 key needs the `shareFiles` capability.
 - Uploading a WAV takes a few extra seconds (the conversion). If ffmpeg fails, the upload still succeeds and the player falls back to the WAV.
 - Deleting a track doesn't delete its preview yet, same as the original files (known limitation).
+
+## Update 2026-11: no beat file is downloadable for free
+
+Beats are now only for listening; they are bought with a license (common, exclusive or exclusive + stems, see the store design in `docs/superpowers/specs/2026-11-03-store-and-about-design.md`). `isLicensedOriginal` refuses every key under `beats/` and `previews/`, so not even the MP3 used for streaming can be downloaded through the API. Sample packs and loops are unaffected.

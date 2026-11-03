@@ -4,6 +4,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file star
 
 ## [Unreleased]
 
+### Changed
+- No beat file is downloadable for free any more, not even the MP3 or its preview: `/api/download/link` and `/api/download` answer `403 LICENSE_REQUIRED`. Beats will be sold with a license. Sample packs and loops are unchanged.
+
 ### Added
 - `GET /api/discography`: the artist's own Spotify releases for the About page, cached in Mongo. `POST /api/jobs/refresh-discography` refreshes it with a jobs token; a Spotify failure keeps the old cache.
 
