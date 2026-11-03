@@ -13,6 +13,12 @@ const envSchema = z.object({
   B2_BUCKET_NAME: z.string().min(1, 'B2_BUCKET_NAME es requerido'),
   B2_PUBLIC_URL: z.string().url('B2_PUBLIC_URL debe ser una URL válida'),
   GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID es requerido'),
+  // Discografía (página About). Opcionales: sin ellas /api/discography devuelve [].
+  SPOTIFY_CLIENT_ID: z.string().optional(),
+  SPOTIFY_CLIENT_SECRET: z.string().optional(),
+  SPOTIFY_ARTIST_ID: z.string().optional(),
+  // Token que usan los crons de GitHub Actions para llamar a /api/jobs/*.
+  JOBS_TOKEN: z.string().min(32, 'JOBS_TOKEN debe tener al menos 32 caracteres').optional(),
   FRONTEND_URL: z.string().url('FRONTEND_URL debe ser una URL válida').default('http://localhost:3000'),
 });
 

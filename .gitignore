@@ -23,3 +23,6 @@ Thumbs.db
 
 # Claude Code: la config compartida se versiona, la personal no
 .claude/settings.local.json
+
+# Espacio de trabajo de los planes de superpowers (no se versiona)
+.superpowers/
