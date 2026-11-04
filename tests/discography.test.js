@@ -64,7 +64,7 @@ describe('fetchArtistReleases', () => {
     expect(tokenInit.headers.Authorization).toBe(`Basic ${Buffer.from('cid:csecret').toString('base64')}`);
     expect(fetchSpy.mock.calls[1][0]).toBe(
       // market evita que Spotify devuelva el mismo lanzamiento varias veces (versiones regionales).
-      'https://api.spotify.com/v1/artists/artist123/albums?include_groups=album,single&market=AR&limit=50'
+      'https://api.spotify.com/v1/artists/artist123/albums?include_groups=album,single&market=AR&limit=10'
     );
     expect(albums).toEqual([
       {

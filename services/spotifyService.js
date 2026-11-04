@@ -12,6 +12,9 @@ const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 // antes de reintentar, para no martillar a Spotify con cada visita a About.
 const RETRY_AFTER_FAILURE_MS = 15 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
+// Spotify limita las apps en modo desarrollo a 10 resultados por página (con más
+// responde 400 "Invalid limit"). La paginación por `next` trae el resto.
+const PAGE_SIZE = 10;
 
 const isConfigured = () =>
   Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET && process.env.SPOTIFY_ARTIST_ID);
@@ -64,7 +67,7 @@ const toAlbum = (item) => ({
 const fetchArtistReleases = async () => {
   const token = await getAccessToken();
   const byId = new Map(); // de-duplica por id entre páginas
-  let url = `${API_URL}/artists/${process.env.SPOTIFY_ARTIST_ID}/albums?include_groups=album,single&market=${MARKET}&limit=50`;
+  let url = `${API_URL}/artists/${process.env.SPOTIFY_ARTIST_ID}/albums?include_groups=album,single&market=${MARKET}&limit=${PAGE_SIZE}`;
   while (url) {
     const page = await spotifyFetch(url, { headers: { Authorization: `Bearer ${token}` } });
     for (const item of page.items || []) byId.set(item.id, toAlbum(item));
