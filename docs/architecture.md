@@ -61,6 +61,10 @@ Both take the URL from the client, so they're an SSRF risk if it isn't restricte
 
 A WAV is about 45 MB; on a phone it takes several seconds before it can start playing. When a WAV bigger than 5 MB is uploaded to a beat or loop catalog, `services/previewService.js` converts it to a 192 kbps MP3 (~4 MB) with ffmpeg (`ffmpeg-static`, through pipes, no temp files) and stores it under `previews/`. The `AudioPreview` collection maps the original URL to the preview URL, and the public catalog routes add `previewFile` to the items that have one. The web player streams the preview; downloads always deliver the original WAV. Sample packs are left untouched on purpose: they are the free contribution to the community and are played and downloaded in their original format. In a batch upload the conversions run one at a time to stay inside Render's memory. `scripts/backfill-previews.js` does the same for files uploaded before this existed.
 
+## Discography
+
+The About page shows the artist's releases from Spotify. `services/spotifyService.js` uses Client Credentials (no Spotify login needed) to read `/artists/{id}/albums?include_groups=album,single`, so only his own releases, not compilations or appearances. Results are cached in the `SpotifyAlbum` collection. A refresh fetches first and only then replaces the cache, so a Spotify outage never empties the page. The write is an upsert per `spotifyId` followed by deleting only the releases that disappeared, so even a failed write leaves the old cache in place. Only one refresh runs at a time (concurrent visits and the cron share it), every Spotify call has a 10 s timeout, the request uses `market=AR` to avoid duplicate regional versions, and after a failure the lazy refresh waits 15 minutes before trying again. Refreshes come from a GitHub Actions cron that calls `POST /api/jobs/refresh-discography` every 6 h (Render Free sleeps, so it can't keep its own timer), and from a lazy refresh when `GET /api/discography` sees the cache is older than 6 h. The frontend plays albums with Spotify's embed so the plays count on Spotify.
+
 ## Data model
 
 ```mermaid

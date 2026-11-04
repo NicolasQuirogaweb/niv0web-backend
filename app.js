@@ -22,6 +22,7 @@ const { success } = require('./utils/response');
 const authRoutes = require('./routes/auth');
 const resourceRoutes = require('./routes/resourceRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const { discographyRouter, jobsRouter } = require('./routes/discographyRoutes');
 
 const app = express();
 
@@ -63,6 +64,8 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/discography', discographyRouter);
+app.use('/api/jobs', jobsRouter);
 
 // Link firmado para que el navegador descargue directo de B2, con su propia barra
 // de progreso y sin que el archivo pase por este servidor. Es lo que usa el front;

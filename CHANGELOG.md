@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file star
 
 ## [Unreleased]
 
+### Changed
+- No beat file is downloadable for free any more, not even the MP3 or its preview: `/api/download/link` and `/api/download` answer `403 LICENSE_REQUIRED`. Beats will be sold with a license. Sample packs and loops are unchanged.
+
+### Added
+- `GET /api/discography`: the artist's own Spotify releases for the About page, cached in Mongo. `POST /api/jobs/refresh-discography` refreshes it with a jobs token; a Spotify failure keeps the old cache.
+
 ### Added
 - `GET /api/download/link`: signed, single-file B2 link that downloads as an attachment named after the track, so the browser downloads directly from B2 with its own progress bar.
 - MP3 previews (192 kbps) for WAVs over 5 MB in beat and loop catalogs (sample packs stay untouched), exposed as `previewFile` in the public catalog. `scripts/backfill-previews.js` for existing files.

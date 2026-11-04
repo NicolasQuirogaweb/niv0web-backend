@@ -55,6 +55,8 @@ These are validated in [`config/env.js`](config/env.js). The template is [`.env.
 | `B2_PUBLIC_URL` | yes | Base URL without the bucket, e.g. `https://s3.us-east-005.backblazeb2.com` |
 | `GOOGLE_CLIENT_ID` | yes | Same client id as the frontend. Used to check the token's audience. |
 | `FRONTEND_URL` | no | Allowed CORS origin. Default `http://localhost:3000` |
+| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_ARTIST_ID` | no | Discography for the About page. Without them `/api/discography` returns `[]` |
+| `JOBS_TOKEN` | no | 32+ characters. Bearer token for `/api/jobs/*`, used by the GitHub Actions crons. Without it the jobs answer 503 |
 | `PORT`, `NODE_ENV` | no | Default `5000` / `development` |
 
 ## API
@@ -83,9 +85,11 @@ Every response has the shape `{ success, data, meta }` or `{ success: false, mes
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/download/link?url=&name=` | Beat WAVs are refused with `403 LICENSE_REQUIRED` (they come with the license; the public catalog only exposes their MP3). Otherwise: signed B2 link (valid 5 min) that downloads the file as an attachment named after the track. The browser downloads straight from B2 ([ADR 0004](docs/decisions/0004-direct-downloads-from-b2.md)). |
+| GET | `/api/download/link?url=&name=` | Any beat file (original or MP3 preview) is refused with `403 LICENSE_REQUIRED`: beats are sold with a license. Otherwise: signed B2 link (valid 5 min) that downloads the file as an attachment named after the track. The browser downloads straight from B2 ([ADR 0004](docs/decisions/0004-direct-downloads-from-b2.md)). |
 | GET | `/api/download?url=` | Older proxy that streams the file through the API. Kept as a fallback. Both only accept URLs from our bucket ([why](docs/architecture.md#downloads)). |
 | GET | `/health` | `{ ok, db }`. Render and the Docker `HEALTHCHECK` use it. |
+| GET | `/api/discography` | Public. The artist's own Spotify releases (albums and singles), newest first, from a Mongo cache refreshed every 6 h. |
+| POST | `/api/jobs/refresh-discography` | `Authorization: Bearer <JOBS_TOKEN>`. Refreshes the cache; if Spotify fails it answers 502 and keeps the old cache. |
 
 **Admin** (`/api/admin`). Every route needs an admin, and the role is read from the database on each request.
 
@@ -135,7 +139,7 @@ These are things I know about and decided not to fix yet:
 - Deleting a catalog removes its documents but not the files in B2. The files stay orphaned in the bucket.
 - Cascade deletes don't run in a Mongo transaction.
 - API error messages are in Spanish. The admin panel is in Spanish and I'm its only user.
-- Render's free plan sleeps after 15 minutes. A GitHub Actions cron (`.github/workflows/keep-warm.yml`) pings `/health` every 10 minutes to keep it awake. GitHub pauses scheduled workflows after 60 days without repo activity; if that happens, re-enable it from the Actions tab.
+- Render's free plan sleeps after 15 minutes. A GitHub Actions cron (`.github/workflows/keep-warm.yml`) pings `/health` every 10 minutes to keep it awake. GitHub pauses scheduled workflows after 60 days without repo activity; if that happens, re-enable it from the Actions tab. The discography is refreshed the same way by `.github/workflows/refresh-discography.yml` every 6 hours; it needs the repo secret `JOBS_TOKEN` (the same value as in Render).
 
 **What I'd do next**
 
