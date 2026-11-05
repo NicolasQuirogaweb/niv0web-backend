@@ -53,8 +53,9 @@ const zipBuildStatus = (pack, now = Date.now()) => {
   return build.status;
 };
 
+// staleAt permite que un build en curso sepa si hubo una edicion despues de empezar.
 const markZipStale = (packId) =>
-  SamplePack.updateOne({ _id: packId }, { $set: { 'zip.stale': true } });
+  SamplePack.updateOne({ _id: packId }, { $set: { 'zip.stale': true, 'zip.staleAt': new Date() } });
 
 const publicPack = (pack, { itemsCount }) => {
   const isFree = isFreePack(pack);

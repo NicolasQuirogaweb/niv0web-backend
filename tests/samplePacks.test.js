@@ -111,10 +111,12 @@ describe('publicPack', () => {
 });
 
 describe('markZipStale', () => {
-  it('flags the zip as stale', async () => {
+  it('flags the zip as stale and records when, so a running build can tell', async () => {
     const spy = jest.spyOn(SamplePack, 'updateOne').mockResolvedValue({});
+    const before = Date.now();
     await markZipStale('abc');
-    expect(spy).toHaveBeenCalledWith({ _id: 'abc' }, { $set: { 'zip.stale': true } });
+    expect(spy).toHaveBeenCalledWith({ _id: 'abc' }, { $set: { 'zip.stale': true, 'zip.staleAt': expect.any(Date) } });
+    expect(spy.mock.calls[0][1].$set['zip.staleAt'].getTime()).toBeGreaterThanOrEqual(before);
     spy.mockRestore();
   });
 });

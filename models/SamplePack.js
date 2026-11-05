@@ -25,6 +25,7 @@ const samplePackSchema = new mongoose.Schema({
         bytes: { type: Number, default: null },
         builtAt: { type: Date, default: null },
         stale: { type: Boolean, default: false },
+        staleAt: { type: Date, default: null },
         build: {
             status: { type: String, enum: ['idle', 'building', 'failed'], default: 'idle' },
             startedAt: { type: Date, default: null },

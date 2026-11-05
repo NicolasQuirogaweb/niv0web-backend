@@ -384,7 +384,7 @@ router.put('/samplepacks/:id', adminAuth, samplePackUpdateFields, validate, asyn
     if (problem) throw ApiError.conflict('Un pack con precio todavía no se puede publicar: la venta no está disponible', problem);
   }
   // El nombre del zip depende del título.
-  if (set.title !== undefined && set.title !== current.title) set['zip.stale'] = true;
+  if (set.title !== undefined && set.title !== current.title) Object.assign(set, { 'zip.stale': true, 'zip.staleAt': new Date() });
   // El slug no se toca nunca: las URLs públicas no pueden romperse.
   const samplepack = await SamplePack.findByIdAndUpdate(
     req.params.id, { $set: set }, { new: true, runValidators: true }
@@ -427,7 +427,7 @@ router.put('/samplepacks/:id/folders', adminAuth, [
   // Cambiar solo las mayúsculas del mismo nombre es válido.
   if (!sameName(folders[index], to) && hasFolder(folders, to)) throw folderExists();
   const next = folders.map((f, i) => (i === index ? to : f));
-  const updated = await SamplePack.findByIdAndUpdate(req.params.id, { $set: { folders: next, 'zip.stale': true } }, { new: true }).lean();
+  const updated = await SamplePack.findByIdAndUpdate(req.params.id, { $set: { folders: next, 'zip.stale': true, 'zip.staleAt': new Date() } }, { new: true }).lean();
   await Samples.updateMany({ samplepackId: pack._id, folder: req.body.from }, { $set: { folder: to } });
   success(res, updated);
 }));
@@ -439,7 +439,7 @@ router.delete('/samplepacks/:id/folders/:name', adminAuth, asyncHandler(async (r
     throw ApiError.conflict('La carpeta tiene samples: movelos o eliminalos primero', 'FOLDER_NOT_EMPTY');
   }
   const updated = await SamplePack.findByIdAndUpdate(
-    req.params.id, { $pull: { folders: req.params.name }, $set: { 'zip.stale': true } }, { new: true }
+    req.params.id, { $pull: { folders: req.params.name }, $set: { 'zip.stale': true, 'zip.staleAt': new Date() } }, { new: true }
   ).lean();
   success(res, updated);
 }));

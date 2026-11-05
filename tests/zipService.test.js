@@ -1,4 +1,6 @@
 const { Readable } = require('stream');
+
+jest.mock('backblaze-b2');
 const { zipEntries, buildPackZip } = require('../services/zipService');
 
 const PACK_ID = '66a000000000000000000001';
@@ -69,17 +71,28 @@ describe('zipEntries', () => {
   });
 });
 
+
 describe('buildPackZip', () => {
   const NOW = new Date('2026-11-05T12:00:00Z');
+  const CLAIMED = new Date('2026-11-05T11:59:00Z');
   const KEY = `samplepacks/mastermind-${NOW.getTime().toString(36)}.zip`;
   let deps;
   let uploaded;
 
-  const setup = ({ packDoc = pack(), samples, get }) => {
+  // findOneAndUpdate devuelve el documento ANTES del update (o null si el
+  // filtro no matcheo). `saves` define que devuelve cada llamada.
+  const setup = ({ packDoc = pack(), samples, get, saves }) => {
     uploaded = null;
+    const results = saves || [{ _id: PACK_ID, zip: packDoc.zip }];
+    let call = 0;
     deps = {
       SamplePack: {
         findById: jest.fn(() => ({ lean: () => Promise.resolve(packDoc) })),
+        findOneAndUpdate: jest.fn(() => {
+          const value = results[Math.min(call, results.length - 1)];
+          call += 1;
+          return { lean: () => Promise.resolve(value) };
+        }),
         updateOne: jest.fn().mockResolvedValue({}),
       },
       Samples: {
@@ -104,9 +117,11 @@ describe('buildPackZip', () => {
   beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}));
   afterEach(() => jest.restoreAllMocks());
 
-  const zipSet = () => deps.SamplePack.updateOne.mock.calls.map(([, update]) => update.$set);
+  const saveCalls = () => deps.SamplePack.findOneAndUpdate.mock.calls;
+  const okWavs = () => ({ data: Readable.from([wav(100, 0)]) });
+  const notFound = () => Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } });
 
-  it('streams the WAVs into the upload, saves the new zip and deletes the old one', async () => {
+  it('streams the WAVs into the upload, saves the new zip and deletes the one it replaced', async () => {
     const files = { [`${BASE}/samples/s1.wav`]: wav(16000, 1), [`${BASE}/samples/s2.wav`]: wav(8000, 2) };
     setup({
       samples: [sample('s1', 'kick', 'Drums'), sample('s2', 'snare', 'Drums')],
@@ -129,21 +144,24 @@ describe('buildPackZip', () => {
     // store mode: el WAV entra tal cual
     expect(uploaded.includes(files[`${BASE}/samples/s1.wav`])).toBe(true);
 
-    expect(zipSet()).toEqual([
-      {
-        zip: {
-          url: `${BASE}/${KEY}`,
-          key: KEY,
-          fileId: 'new-id',
-          bytes: uploaded.length,
-          builtAt: NOW,
-          stale: false,
-          build: { status: 'idle', startedAt: null, error: null },
-        },
-      },
-    ]);
+    // sin claim: update incondicional, como antes
+    expect(saveCalls()).toHaveLength(1);
+    const [filter, update] = saveCalls()[0];
+    expect(filter).toEqual({ _id: PACK_ID });
+    expect(update.$set).toEqual({
+      'zip.url': `${BASE}/${KEY}`,
+      'zip.key': KEY,
+      'zip.fileId': 'new-id',
+      'zip.bytes': uploaded.length,
+      'zip.builtAt': NOW,
+      'zip.stale': false,
+      'zip.build': { status: 'idle', startedAt: null, error: null },
+    });
+    expect(deps.SamplePack.updateOne).not.toHaveBeenCalled();
     expect(deps.b2.deleteFile).toHaveBeenCalledWith('samplepacks/mastermind-old.zip', 'old-id');
-    expect(deps.SamplePack.updateOne.mock.invocationCallOrder[0]).toBeLessThan(deps.b2.deleteFile.mock.invocationCallOrder[0]);
+    expect(deps.SamplePack.findOneAndUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.b2.deleteFile.mock.invocationCallOrder[0]
+    );
 
     const ops = deps.Samples.bulkWrite.mock.calls[0][0];
     expect(ops).toEqual([
@@ -153,38 +171,104 @@ describe('buildPackZip', () => {
   });
 
   it('does not delete anything when the pack had no previous zip', async () => {
-    setup({
-      packDoc: pack({ zip: { url: null, key: null, fileId: null } }),
-      samples: [sample('s1', 'kick', 'Drums')],
-      get: async () => ({ data: Readable.from([wav(100, 0)]) }),
-    });
+    const packDoc = pack({ zip: { url: null, key: null, fileId: null } });
+    setup({ packDoc, samples: [sample('s1', 'kick', 'Drums')], get: async () => okWavs() });
     await buildPackZip(PACK_ID, deps);
-    expect(zipSet()[0].zip.url).toBe(`${BASE}/${KEY}`);
+    expect(saveCalls()[0][1].$set['zip.url']).toBe(`${BASE}/${KEY}`);
     expect(deps.b2.deleteFile).not.toHaveBeenCalled();
   });
 
-  const expectFailed = (fragment) => {
-    const sets = zipSet();
+  it('falls back to the pack id in the key when the pack has no slug', async () => {
+    setup({ packDoc: pack({ slug: undefined }), samples: [sample('s1', 'kick', 'Drums')], get: async () => okWavs() });
+    await buildPackZip(PACK_ID, deps);
+    expect(deps.b2.uploadLargeStream.mock.calls[0][1]).toBe(`samplepacks/${PACK_ID}-${NOW.getTime().toString(36)}.zip`);
+  });
+
+  describe('with a claim', () => {
+    const claim = { startedAt: CLAIMED };
+    const owned = { _id: PACK_ID, 'zip.build.startedAt': CLAIMED };
+
+    it('saves a fresh zip only while it owns the claim and nothing was edited since', async () => {
+      setup({ samples: [sample('s1', 'kick', 'Drums')], get: async () => okWavs() });
+      await buildPackZip(PACK_ID, deps, claim);
+
+      expect(saveCalls()).toHaveLength(1);
+      const [filter, update] = saveCalls()[0];
+      expect(filter).toEqual({ ...owned, $or: [{ 'zip.staleAt': null }, { 'zip.staleAt': { $lte: CLAIMED } }] });
+      expect(update.$set['zip.stale']).toBe(false);
+      expect(deps.b2.deleteFile).toHaveBeenCalledWith('samplepacks/mastermind-old.zip', 'old-id');
+    });
+
+    it('leaves the zip stale when the pack was edited during the build', async () => {
+      // el primer update no matchea (staleAt > startedAt), el segundo si
+      setup({
+        samples: [sample('s1', 'kick', 'Drums')],
+        get: async () => okWavs(),
+        saves: [null, { _id: PACK_ID, zip: pack().zip }],
+      });
+      await buildPackZip(PACK_ID, deps, claim);
+
+      expect(saveCalls()).toHaveLength(2);
+      const [filter, update] = saveCalls()[1];
+      expect(filter).toEqual(owned);
+      expect(update.$set['zip.stale']).toBe(true);
+      expect(update.$set['zip.url']).toBe(`${BASE}/${KEY}`);
+      expect(deps.b2.deleteFile).toHaveBeenCalledWith('samplepacks/mastermind-old.zip', 'old-id');
+    });
+
+    it('deletes its own new file and leaves the pack alone when superseded', async () => {
+      setup({ samples: [sample('s1', 'kick', 'Drums')], get: async () => okWavs(), saves: [null] });
+      await buildPackZip(PACK_ID, deps, claim);
+
+      expect(saveCalls()).toHaveLength(2);
+      saveCalls().forEach(([filter]) => expect(filter).toMatchObject(owned));
+      expect(deps.b2.deleteFile).toHaveBeenCalledTimes(1);
+      expect(deps.b2.deleteFile).toHaveBeenCalledWith(KEY, 'new-id');
+      expect(deps.SamplePack.updateOne).not.toHaveBeenCalled();
+      expect(deps.Samples.bulkWrite).not.toHaveBeenCalled();
+    });
+
+    it('records a failure only while it still owns the claim', async () => {
+      setup({
+        samples: [sample('s1', 'Lost Kick', 'Drums')],
+        get: async () => {
+          throw notFound();
+        },
+      });
+      deps.SamplePack.updateOne.mockResolvedValue({ matchedCount: 0 });
+      await buildPackZip(PACK_ID, deps, claim);
+
+      expect(deps.SamplePack.updateOne).toHaveBeenCalledTimes(1);
+      const [filter, update] = deps.SamplePack.updateOne.mock.calls[0];
+      expect(filter).toEqual(owned);
+      expect(update.$set['zip.build.error']).toBe('No se pudo armar el ZIP: Lost Kick (404)');
+      expect(saveCalls()).toHaveLength(0);
+      expect(deps.b2.deleteFile).not.toHaveBeenCalled();
+    });
+  });
+
+  const failure = () => {
+    const sets = deps.SamplePack.updateOne.mock.calls.map(([, update]) => update.$set);
     expect(sets).toHaveLength(1);
     expect(sets[0]['zip.build.status']).toBe('failed');
-    expect(sets[0]['zip.build.error']).toContain('No se pudo armar el ZIP: ');
-    expect(sets[0]['zip.build.error']).toContain(fragment);
     expect(Object.keys(sets[0]).some((k) => k === 'zip' || k === 'zip.url' || k === 'zip.fileId' || k === 'zip.bytes')).toBe(false);
+    expect(saveCalls()).toHaveLength(0);
     expect(deps.b2.deleteFile).not.toHaveBeenCalled();
+    return sets[0]['zip.build.error'];
   };
 
-  it('fails naming the sample when a WAV is missing (404) and keeps the previous zip', async () => {
+  it('fails naming the sample and the status when a WAV is missing (404) and keeps the previous zip', async () => {
     setup({
       samples: [sample('s1', 'kick', 'Drums'), sample('s2', 'Missing Snare', 'Drums')],
       get: async (url) => {
-        if (url.endsWith('s2.wav')) throw Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } });
-        return { data: Readable.from([wav(100, 0)]) };
+        if (url.endsWith('s2.wav')) throw notFound();
+        return okWavs();
       },
     });
 
     await buildPackZip(PACK_ID, deps);
 
-    expectFailed('Missing Snare');
+    expect(failure()).toBe('No se pudo armar el ZIP: Missing Snare (404)');
     // la subida vio el error y no termino
     await expect(deps.b2.uploadLargeStream.mock.results[0].value).rejects.toThrow();
     expect(uploaded).toBeNull();
@@ -202,27 +286,71 @@ describe('buildPackZip', () => {
     });
 
     await buildPackZip(PACK_ID, deps);
-    expectFailed('Broken Kick');
+    expect(failure()).toBe('No se pudo armar el ZIP: Broken Kick (socket hang up)');
   });
 
   it('fails when the upload fails', async () => {
-    setup({
-      samples: [sample('s1', 'kick', 'Drums')],
-      get: async () => ({ data: Readable.from([wav(100, 0)]) }),
-    });
+    setup({ samples: [sample('s1', 'kick', 'Drums')], get: async () => okWavs() });
     deps.b2.uploadLargeStream.mockImplementation(async (readable) => {
       readable.resume();
       throw Object.assign(new Error('Error al subir el archivo al almacenamiento'), { code: 'STORAGE_UPLOAD_FAILED' });
     });
 
     await buildPackZip(PACK_ID, deps);
-    expectFailed('almacenamiento');
+    expect(failure()).toContain('almacenamiento');
   });
 
   it('fails when the pack has no samples', async () => {
-    setup({ samples: [], get: async () => ({ data: Readable.from([]) }) });
+    setup({ samples: [], get: async () => okWavs() });
     await buildPackZip(PACK_ID, deps);
-    expectFailed('no tiene samples');
+    expect(failure()).toContain('no tiene samples');
     expect(deps.b2.uploadLargeStream).not.toHaveBeenCalled();
+  });
+
+  describe('stalled downloads', () => {
+    const B2 = require('backblaze-b2');
+    const realB2 = require('../services/b2Service');
+    const b2 = B2.prototype;
+    // Manda un chunk (mas grande que una parte, asi arranca el large file) y se queda quieto.
+    const stalled = () => {
+      const data = new Readable({ read() {} });
+      data.push(Buffer.alloc(11 * 1024 * 1024, 3));
+      return data;
+    };
+
+    beforeEach(() => {
+      b2.authorize.mockResolvedValue({ data: {} });
+      b2.startLargeFile.mockResolvedValue({ data: { fileId: 'large-1' } });
+      b2.getUploadPartUrl.mockResolvedValue({ data: { uploadUrl: 'https://part', authorizationToken: 'tok' } });
+      b2.uploadPart.mockResolvedValue({ data: {} });
+      b2.cancelLargeFile.mockResolvedValue({ data: {} });
+    });
+    afterEach(() => jest.resetAllMocks());
+
+    it('fails the sample after the idle timeout and cancels the large file', async () => {
+      setup({ samples: [sample('s1', 'Frozen Pad', 'Drums')], get: async () => ({ data: stalled() }) });
+      deps.b2 = { uploadLargeStream: realB2.uploadLargeStream, deleteFile: jest.fn() };
+      deps.idleTimeoutMs = 50;
+
+      await buildPackZip(PACK_ID, deps);
+
+      expect(failure()).toBe('No se pudo armar el ZIP: Frozen Pad (sin respuesta)');
+      expect(b2.startLargeFile).toHaveBeenCalled();
+      expect(b2.cancelLargeFile).toHaveBeenCalledWith({ fileId: 'large-1' });
+      expect(b2.finishLargeFile).not.toHaveBeenCalled();
+    });
+
+    it('aborts at the overall build cap and cancels the large file', async () => {
+      setup({ samples: [sample('s1', 'Slow Pad', 'Drums')], get: async () => ({ data: stalled() }) });
+      deps.b2 = { uploadLargeStream: realB2.uploadLargeStream, deleteFile: jest.fn() };
+      deps.idleTimeoutMs = 60 * 1000;
+      deps.buildTimeoutMs = 80;
+
+      await buildPackZip(PACK_ID, deps);
+
+      expect(failure()).toBe('No se pudo armar el ZIP: se supero el tiempo maximo de armado');
+      expect(b2.cancelLargeFile).toHaveBeenCalledWith({ fileId: 'large-1' });
+      expect(b2.finishLargeFile).not.toHaveBeenCalled();
+    });
   });
 });

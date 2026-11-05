@@ -44,7 +44,7 @@ describe('PUT /samplepacks/:id publishing', () => {
     const res = await api('put', `/samplepacks/${PACK_ID}`).send({ title: 'New' });
     expect(res.status).toBe(200);
     const update = SamplePack.findByIdAndUpdate.mock.calls[0][1];
-    expect(update.$set).toMatchObject({ title: 'New', 'zip.stale': true });
+    expect(update.$set).toMatchObject({ title: 'New', 'zip.stale': true, 'zip.staleAt': expect.any(Date) });
     expect(update.$set.slug).toBeUndefined();
   });
 });
@@ -67,7 +67,7 @@ describe('folders', () => {
       { $set: { folder: 'Kicks' } }
     );
     const update = SamplePack.findByIdAndUpdate.mock.calls[0][1];
-    expect(update.$set).toMatchObject({ folders: ['Snares', 'Kicks'], 'zip.stale': true });
+    expect(update.$set).toMatchObject({ folders: ['Snares', 'Kicks'], 'zip.stale': true, 'zip.staleAt': expect.any(Date) });
   });
 
   it('refuses to delete a folder that has samples', async () => {
@@ -184,19 +184,19 @@ describe('zip stale marking on samples', () => {
   it('marks stale on single add', async () => {
     Samples.create.mockResolvedValue({ _id: 's2' });
     await api('post', `/samplepacks/${PACK_ID}/samples`).send({ title: 'x', audioFile: 'https://cdn/x.wav', folder: 'A' });
-    expect(SamplePack.updateOne).toHaveBeenCalledWith({ _id: PACK_ID }, { $set: { 'zip.stale': true } });
+    expect(SamplePack.updateOne).toHaveBeenCalledWith({ _id: PACK_ID }, { $set: { 'zip.stale': true, 'zip.staleAt': expect.any(Date) } });
   });
 
   it('marks stale on batch add', async () => {
     Samples.insertMany.mockResolvedValue([{ _id: 's2' }]);
     await api('post', `/samplepacks/${PACK_ID}/samples/batch`).send({ samples: [{ title: 'x', audioFile: 'https://cdn/x.wav', folder: 'A' }] });
-    expect(SamplePack.updateOne).toHaveBeenCalledWith({ _id: PACK_ID }, { $set: { 'zip.stale': true } });
+    expect(SamplePack.updateOne).toHaveBeenCalledWith({ _id: PACK_ID }, { $set: { 'zip.stale': true, 'zip.staleAt': expect.any(Date) } });
   });
 
   it('marks stale on delete', async () => {
     Samples.findByIdAndDelete.mockReturnValue(lean(existing));
     await api('delete', '/samples/s1');
-    expect(SamplePack.updateOne).toHaveBeenCalledWith({ _id: PACK_ID }, { $set: { 'zip.stale': true } });
+    expect(SamplePack.updateOne).toHaveBeenCalledWith({ _id: PACK_ID }, { $set: { 'zip.stale': true, 'zip.staleAt': expect.any(Date) } });
   });
 
   it('marks stale when the folder changes', async () => {
