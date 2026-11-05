@@ -1,4 +1,5 @@
 const path = require('path');
+const crypto = require('crypto');
 const B2 = require('backblaze-b2');
 
 const ALLOWED_MIME_TYPES = {
@@ -153,4 +154,151 @@ const getDownloadLink = async (key, disposition) => {
   }
 };
 
-module.exports = { uploadToB2, getDownloadLink, resolveMimeType, ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS };
+// Archivos grandes (ZIPs de packs) se suben en partes de 10 MB: B2 exige partes
+// de al menos 5 MB salvo la ultima, y en Render Free (512 MB) solo se mantiene
+// una parte en memoria a la vez.
+const PART_SIZE = 10 * 1024 * 1024;
+
+const sha1Hex = (buf) => crypto.createHash('sha1').update(buf).digest('hex');
+
+const publicUrlForKey = (key) => `${process.env.B2_PUBLIC_URL}/${process.env.B2_BUCKET_NAME}/${key}`;
+
+// Igual que uploadToB2: hasta MAX_ATTEMPTS intentos con backoff, y un 401/403
+// fuerza re-authorize antes del siguiente intento.
+const withRetry = async (fn) => {
+  let lastError;
+  let needsAuth = false;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      if (needsAuth) await authorize();
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const status = err.response?.status;
+      needsAuth = status === 401 || status === 403;
+      if (attempt < MAX_ATTEMPTS - 1) await sleep(RETRY_BASE_MS * 2 ** attempt);
+    }
+  }
+  throw lastError;
+};
+
+/**
+ * Streams `readable` to B2 under `key` without holding the whole file in memory.
+ * Up to PART_SIZE bytes are buffered at a time; anything that fits in one part
+ * goes up with a plain uploadFile. On failure the large file is cancelled and a
+ * STORAGE_UPLOAD_FAILED error is thrown.
+ * @returns {Promise<{ url: string, key: string, bytes: number, fileId: string }>}
+ */
+const uploadLargeStream = async (readable, key, { mime = 'application/octet-stream', cacheControl } = {}) => {
+  const fileInfo = cacheControl ? { 'b2-cache-control': cacheControl } : {};
+  let fileId = null;
+  const partSha1Array = [];
+  let chunks = [];
+  let buffered = 0;
+  let bytes = 0;
+
+  const uploadPart = async (data) => {
+    const partNumber = partSha1Array.length + 1;
+    const hash = sha1Hex(data);
+    await withRetry(async () => {
+      // B2 recomienda pedir una URL de parte nueva en cada reintento.
+      const { data: part } = await b2.getUploadPartUrl({ fileId });
+      await b2.uploadPart({
+        partNumber,
+        uploadUrl: part.uploadUrl,
+        uploadAuthToken: part.authorizationToken,
+        data,
+        hash,
+      });
+    });
+    partSha1Array.push(hash);
+  };
+
+  try {
+    await authorize();
+    for await (const chunk of readable) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      chunks.push(buf);
+      buffered += buf.length;
+      bytes += buf.length;
+      // Se corta una parte solo cuando sobra algo despues: asi la ultima parte
+      // nunca queda vacia y un large file siempre tiene 2 partes o mas.
+      while (buffered > PART_SIZE) {
+        const all = Buffer.concat(chunks, buffered);
+        chunks = [Buffer.from(all.subarray(PART_SIZE))]; // copia: libera el buffer grande
+        buffered -= PART_SIZE;
+        if (!fileId) {
+          const { data } = await withRetry(() =>
+            b2.startLargeFile({
+              bucketId: process.env.B2_BUCKET_ID,
+              fileName: key,
+              contentType: mime,
+              // backblaze-b2 1.7.1 no reenvia fileInfo en startLargeFile.
+              axiosOverride: { data: { fileInfo } },
+            })
+          );
+          fileId = data.fileId;
+        }
+        await uploadPart(all.subarray(0, PART_SIZE));
+      }
+    }
+
+    const rest = Buffer.concat(chunks, buffered);
+    chunks = []; // suelta los chunks: `rest` ya tiene la copia
+
+    if (!fileId) {
+      const { data } = await withRetry(async () => {
+        const { data: up } = await b2.getUploadUrl({ bucketId: process.env.B2_BUCKET_ID });
+        return b2.uploadFile({
+          uploadUrl: up.uploadUrl,
+          uploadAuthToken: up.authorizationToken,
+          fileName: key,
+          data: rest,
+          mime,
+          info: fileInfo,
+        });
+      });
+      return { url: publicUrlForKey(key), key, bytes, fileId: data.fileId };
+    }
+
+    await uploadPart(rest);
+    await withRetry(() => b2.finishLargeFile({ fileId, partSha1Array }));
+    return { url: publicUrlForKey(key), key, bytes, fileId };
+  } catch (err) {
+    if (typeof readable.destroy === 'function' && !readable.destroyed) readable.destroy();
+    if (fileId) {
+      try {
+        await b2.cancelLargeFile({ fileId });
+      } catch (cancelErr) {
+        console.error('B2 cancelLargeFile failed:', { key, fileId, message: cancelErr.message });
+      }
+    }
+    console.error('B2 large upload failed:', {
+      key,
+      status: err.response?.status,
+      data: err.response?.data,
+      message: err.message,
+    });
+    const uploadError = new Error('Error al subir el archivo al almacenamiento');
+    uploadError.statusCode = 502;
+    uploadError.code = 'STORAGE_UPLOAD_FAILED';
+    uploadError.cause = err;
+    throw uploadError;
+  }
+};
+
+const deleteFile = async (key, fileId) => {
+  await authorize();
+  await withRetry(() => b2.deleteFileVersion({ fileId, fileName: key }));
+};
+
+module.exports = {
+  uploadToB2,
+  getDownloadLink,
+  uploadLargeStream,
+  deleteFile,
+  PART_SIZE,
+  resolveMimeType,
+  ALLOWED_MIME_TYPES,
+  ALLOWED_EXTENSIONS,
+};

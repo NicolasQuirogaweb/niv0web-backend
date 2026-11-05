@@ -14,6 +14,7 @@
   "license": "MIT",
   "description": "REST API for niv0 prod: beats, loops and sample packs catalog with Google login and Backblaze B2 storage",
   "dependencies": {
+    "archiver": "^7.0.1",
     "axios": "^1.7.7",
     "backblaze-b2": "^1.7.1",
     "compression": "^1.7.4",
