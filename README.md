@@ -77,7 +77,8 @@ Every response has the shape `{ success, data, meta }` or `{ success: false, mes
 | Method | Path | |
 |---|---|---|
 | GET | `/playlists?type=beats\|loops` | Catalogs, each with `itemsCount` |
-| GET | `/samplepacks` | Sample packs, each with `itemsCount` |
+| GET | `/samplepacks` | Published sample packs: `slug`, `folderCount`, `itemsCount`, `isFree`, prices and `zip` (`{ url, bytes }`, only for free packs with a built ZIP) |
+| GET | `/samplepacks/:slug` | A published pack with its `folders`, each with its samples (`title`, `audioFile`, `durationSec`). `404 PACK_NOT_FOUND` if missing or unpublished. |
 | GET | `/:type/playlist/:id` | A catalog with its tracks. `type` is `beats`, `loops` or `samples`. |
 | GET | `/:type` | Every item of a type (`beats`, `loops`, `samples`, `prodmixmasters`) |
 
@@ -97,7 +98,9 @@ Every response has the shape `{ success, data, meta }` or `{ success: false, mes
 - `GET|POST /playlists`, `PUT|DELETE /playlists/:id`, `POST /playlists/:id/duplicate`
 - `GET|POST /playlists/:id/beats`, `POST /playlists/:id/beats/batch`, `PUT|DELETE /beats/:id`
 - `GET|POST /playlists/:id/loops`, `POST /playlists/:id/loops/batch`, `PUT|DELETE /loops/:id`
-- `GET|POST /samplepacks`, `PUT|DELETE /samplepacks/:id`, `POST /samplepacks/:id/duplicate`
+- `GET|POST /samplepacks`, `PUT|DELETE /samplepacks/:id`, `POST /samplepacks/:id/duplicate`. A pack can't be published empty (`PACK_EMPTY`) or with a price (`PACK_PAID_NOT_SELLABLE`).
+- `POST /samplepacks/:id/folders`, `PUT /samplepacks/:id/folders` (rename), `PUT /samplepacks/:id/folders/order`, `DELETE /samplepacks/:id/folders/:name` (`409 FOLDER_NOT_EMPTY` if it has samples)
+- `POST /samplepacks/:id/zip`: builds the pack's ZIP in the background and answers `202`; `409 ZIP_BUILDING` if one is already running ([ADR 0005](docs/decisions/0005-sample-packs-with-folders.md))
 - `GET|POST /samplepacks/:id/samples`, `POST /samplepacks/:id/samples/batch`, `PUT|DELETE /samples/:id`
 - `GET|POST /prodmixmasters`, `PUT|DELETE /prodmixmasters/:id`
 - `GET /users`, `PUT /users/:id/role`

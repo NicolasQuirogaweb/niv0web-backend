@@ -8,6 +8,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file star
 - No beat file is downloadable for free any more, not even the MP3 or its preview: `/api/download/link` and `/api/download` answer `403 LICENSE_REQUIRED`. Beats will be sold with a license. Sample packs and loops are unchanged.
 
 ### Added
+- Sample packs with folders and ZIP downloads: ordered `folders` per pack, `folder` per sample, `slug`, optional prices, publish rules (empty or paid packs can't be published), `GET /api/resources/samplepacks/:slug`, admin folder endpoints and `POST /api/admin/samplepacks/:id/zip` (streamed ZIP build with atomic claim and stale tracking). See ADR 0005.
+- `scripts/migrate-samplepacks.js` (`npm run migrate:samplepacks`): merges the old packs into Mastermind; dry run by default, idempotent `--apply`, `--delete-old` for empty packs.
+
+### Added
 - `GET /api/discography`: the artist's own Spotify releases for the About page, cached in Mongo. `POST /api/jobs/refresh-discography` refreshes it with a jobs token; a Spotify failure keeps the old cache.
 
 ### Added

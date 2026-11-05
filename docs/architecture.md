@@ -59,7 +59,13 @@ Both take the URL from the client, so they're an SSRF risk if it isn't restricte
 
 ## MP3 previews
 
-A WAV is about 45 MB; on a phone it takes several seconds before it can start playing. When a WAV bigger than 5 MB is uploaded to a beat or loop catalog, `services/previewService.js` converts it to a 192 kbps MP3 (~4 MB) with ffmpeg (`ffmpeg-static`, through pipes, no temp files) and stores it under `previews/`. The `AudioPreview` collection maps the original URL to the preview URL, and the public catalog routes add `previewFile` to the items that have one. The web player streams the preview; downloads always deliver the original WAV. Sample packs are left untouched on purpose: they are the free contribution to the community and are played and downloaded in their original format. In a batch upload the conversions run one at a time to stay inside Render's memory. `scripts/backfill-previews.js` does the same for files uploaded before this existed.
+A WAV is about 45 MB; on a phone it takes several seconds before it can start playing. When a WAV bigger than 5 MB is uploaded to a beat or loop catalog, `services/previewService.js` converts it to a 192 kbps MP3 (~4 MB) with ffmpeg (`ffmpeg-static`, through pipes, no temp files) and stores it under `previews/`. The `AudioPreview` collection maps the original URL to the preview URL, and the public catalog routes add `previewFile` to the items that have one. The web player streams the preview; downloads always deliver the original WAV. Sample packs are not converted: they are played in their original format and downloaded as a ZIP (see below). In a batch upload the conversions run one at a time to stay inside Render's memory. `scripts/backfill-previews.js` does the same for files uploaded before this existed.
+
+## Sample packs and ZIPs
+
+A pack has ordered `folders` and every sample has a `folder`. Public endpoints: `GET /api/resources/samplepacks` (published packs with `folderCount`, `itemsCount`, `isFree`, `zip`) and `GET /api/resources/samplepacks/:slug` (the pack with its folders and samples). Admin endpoints: folder create, rename, reorder and delete under `/api/admin/samplepacks/:id/folders`, and `POST /api/admin/samplepacks/:id/zip`.
+
+The ZIP is built by `services/zipService.js`, which streams each sample from B2 through `archiver` into a B2 large-file upload (no whole-file buffering, Render has 512 MB). The endpoint claims the build atomically with `zip.build.startedAt`; the build writes its result only while it still owns that claim, and a superseded build deletes its own file. Admin edits stamp `zip.staleAt`, so a build that started before an edit leaves `zip.stale: true`. Each sample download has a 60 s idle timeout, the whole build a 30 min cap, and a `building` state older than that can be claimed again. Details in [ADR 0005](decisions/0005-sample-packs-with-folders.md). `scripts/migrate-samplepacks.js` merges the old packs into Mastermind.
 
 ## Discography
 
