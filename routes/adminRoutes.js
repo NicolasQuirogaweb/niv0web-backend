@@ -377,7 +377,8 @@ router.put('/samplepacks/:id', adminAuth, samplePackUpdateFields, validate, asyn
   for (const key of ['title', 'description', 'imageUrl', 'priceArs', 'priceUsd', 'published']) {
     if (req.body[key] !== undefined) set[key] = req.body[key];
   }
-  if (set.published === true) {
+  // Se valida contra el estado resultante: poner precio a un pack ya publicado tambien se rechaza.
+  if (set.published ?? current.published) {
     const problem = publishProblem({ ...current, ...set }, await Samples.countDocuments({ samplepackId: current._id }));
     if (problem === 'PACK_EMPTY') throw ApiError.conflict('El pack no tiene samples: no se puede publicar vacío', problem);
     if (problem) throw ApiError.conflict('Un pack con precio todavía no se puede publicar: la venta no está disponible', problem);
@@ -397,7 +398,7 @@ router.post('/samplepacks/:id/folders', adminAuth, body('name').isString().withM
   const pack = await requireSamplePack(req.params.id);
   if (hasFolder(pack.folders || [], name)) throw folderExists();
   const updated = await SamplePack.findByIdAndUpdate(
-    req.params.id, { $push: { folders: name }, $set: { 'zip.stale': true } }, { new: true }
+    req.params.id, { $push: { folders: name } }, { new: true }
   ).lean();
   success(res, updated, {}, 201);
 }));
@@ -410,7 +411,7 @@ router.put('/samplepacks/:id/folders/order', adminAuth, body('folders').isArray(
     && new Set(next).size === next.length
     && next.every((name) => current.includes(name));
   if (!isPermutation) throw ApiError.badRequest('La lista debe contener exactamente las carpetas actuales', 'INVALID_FOLDER_ORDER');
-  const updated = await SamplePack.findByIdAndUpdate(req.params.id, { $set: { folders: next, 'zip.stale': true } }, { new: true }).lean();
+  const updated = await SamplePack.findByIdAndUpdate(req.params.id, { $set: { folders: next } }, { new: true }).lean();
   success(res, updated);
 }));
 
