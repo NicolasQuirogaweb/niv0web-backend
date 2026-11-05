@@ -31,7 +31,11 @@ const planSamplePackMigration = (oldPacks, counts, order = DEFAULT_ORDER) => {
  */
 const applyMigration = async ({ SamplePack, Samples }, plan, { log = console.log } = {}) => {
   const { publishProblem } = require('../utils/samplePacks');
-  let master = await SamplePack.findOne({ slug: MASTER_SLUG });
+  let master = await SamplePack.findOne({ $or: [{ slug: MASTER_SLUG }, { title: MASTER_TITLE }] });
+  if (master && master.slug !== MASTER_SLUG) {
+    await SamplePack.updateOne({ _id: master._id }, { $set: { slug: MASTER_SLUG } });
+    master.slug = MASTER_SLUG;
+  }
   if (!master) {
     master = await SamplePack.create({
       title: MASTER_TITLE, slug: MASTER_SLUG, description: MASTER_DESCRIPTION, type: 'samples', published: false,
@@ -41,8 +45,11 @@ const applyMigration = async ({ SamplePack, Samples }, plan, { log = console.log
   const folders = [...new Set([...(master.folders || []), ...plan.folders])];
   await SamplePack.updateOne({ _id: master._id }, { $set: { folders } });
 
+  // Dos packs viejos con el mismo titulo caen en la misma carpeta: se suman.
+  const expected = {};
+  for (const m of plan.moves) expected[m.folder] = (expected[m.folder] || 0) + m.count;
   const before = {};
-  for (const m of plan.moves) before[m.folder] = await Samples.countDocuments({ samplepackId: master._id, folder: m.folder });
+  for (const folder of Object.keys(expected)) before[folder] = await Samples.countDocuments({ samplepackId: master._id, folder });
   const totalBefore = await Samples.countDocuments({ samplepackId: master._id });
 
   let moved = 0;
@@ -54,10 +61,10 @@ const applyMigration = async ({ SamplePack, Samples }, plan, { log = console.log
     log(`  ${m.folder}: ${m.count} movidos`);
   }
 
-  for (const m of plan.moves) {
-    const now = await Samples.countDocuments({ samplepackId: master._id, folder: m.folder });
-    if (now !== before[m.folder] + m.count) {
-      throw new Error(`Count mismatch en ${m.folder}: esperaba ${before[m.folder] + m.count}, hay ${now}`);
+  for (const folder of Object.keys(expected)) {
+    const now = await Samples.countDocuments({ samplepackId: master._id, folder });
+    if (now !== before[folder] + expected[folder]) {
+      throw new Error(`Count mismatch en ${folder}: esperaba ${before[folder] + expected[folder]}, hay ${now}`);
     }
   }
   const totalAfter = await Samples.countDocuments({ samplepackId: master._id });
@@ -67,7 +74,10 @@ const applyMigration = async ({ SamplePack, Samples }, plan, { log = console.log
 
   const problem = publishProblem(master, totalAfter);
   if (problem) throw new Error(`No se puede publicar ${MASTER_TITLE}: ${problem}`);
-  await SamplePack.updateOne({ _id: master._id }, { $set: { published: true } });
+  // Si entraron samples, el ZIP ya armado quedo desactualizado.
+  const publishSet = { published: true };
+  if (moved > 0) Object.assign(publishSet, { 'zip.stale': true, 'zip.staleAt': new Date() });
+  await SamplePack.updateOne({ _id: master._id }, { $set: publishSet });
   const oldIds = plan.moves.map((m) => m.fromId);
   if (oldIds.length) await SamplePack.updateMany({ _id: { $in: oldIds } }, { $set: { published: false } });
   return { moved, total: totalAfter, masterId: master._id };

@@ -39,8 +39,8 @@ const makeModels = (samples, existingMaster) => {
   return {
     state,
     SamplePack: {
-      findOne: async (q) => [...state.packs.values()].find((p) => match(q, p)) || null,
-      create: async (doc) => { const p = { ...doc, _id: 'mm' }; state.packs.set('mm', p); return p; },
+      findOne: async (q) => [...state.packs.values()].find((p) => (q.$or ? q.$or.some((c) => match(c, p)) : match(q, p))) || null,
+      create: async (doc) => { state.created = { ...doc }; const p = { ...doc, _id: 'mm' }; state.packs.set('mm', p); return p; },
       updateOne: async (q, { $set }) => { Object.assign(state.packs.get(q._id), $set); },
       updateMany: async (q, { $set }) => {
         q._id.$in.forEach((id) => Object.assign(state.packs.get(id), $set));
@@ -79,5 +79,54 @@ describe('applyMigration', () => {
     models.Samples.updateMany = async () => {};
     await expect(applyMigration(models, plan, { log })).rejects.toThrow(/mismatch/i);
     expect(models.state.packs.get('mm').published).toBe(false);
+  });
+
+  it('creates Mastermind unpublished with the agreed fields', async () => {
+    const models = makeModels(seed());
+    await applyMigration(models, planSamplePackMigration(packs, counts), { log });
+    expect(models.state.created).toEqual({
+      title: 'Mastermind',
+      slug: 'mastermind',
+      description: 'Drums, 808s, bajos, synths y FX de niv0. Gratis para tus producciones.',
+      type: 'samples',
+      published: false,
+    });
+  });
+
+  it('merges folders into an existing Mastermind without duplicates and stamps its ZIP stale', async () => {
+    const models = makeModels(seed(), {
+      title: 'Mastermind', slug: 'mastermind', folders: ['Drums', 'Extra'], published: false,
+      zip: { url: 'https://b2/zip', stale: false, staleAt: null },
+    });
+    await applyMigration(models, planSamplePackMigration(packs, counts), { log });
+    const mm = models.state.packs.get('mm');
+    expect(mm.folders).toEqual(['Drums', 'Extra', '808', 'Bass', 'Synths', 'Fxs']);
+    expect(mm['zip.stale']).toBe(true);
+    expect(mm['zip.staleAt']).toBeInstanceOf(Date);
+  });
+
+  it('does not stamp the ZIP when nothing moved', async () => {
+    const models = makeModels([], { title: 'Mastermind', slug: 'mastermind', folders: [], zip: { url: 'u' } });
+    models.state.samples.push({ samplepackId: 'mm', folder: 'Drums' });
+    const zeroCounts = { fxs: 0, 808: 0, syn: 0, drm: 0, bas: 0 };
+    const res = await applyMigration(models, planSamplePackMigration(packs, zeroCounts), { log });
+    expect(res.moved).toBe(0);
+    expect(models.state.packs.get('mm')['zip.stale']).toBeUndefined();
+  });
+
+  it('finds Mastermind by title when it has no slug and sets the slug', async () => {
+    const models = makeModels(seed(), { title: 'Mastermind', folders: [] });
+    await applyMigration(models, planSamplePackMigration(packs, counts), { log });
+    expect(models.state.created).toBeUndefined();
+    expect(models.state.packs.get('mm').slug).toBe('mastermind');
+  });
+
+  it('sums expected counts of old packs that share a title', async () => {
+    const dup = [...packs, { _id: 'drm2', title: 'Drums' }];
+    const models = makeModels([...seed(), ...Array.from({ length: 6 }, () => ({ samplepackId: 'drm2' }))]);
+    models.state.packs.set('drm2', { _id: 'drm2', title: 'Drums', published: true });
+    const plan = planSamplePackMigration(dup, { ...counts, drm2: 6 });
+    const res = await applyMigration(models, plan, { log });
+    expect(res.total).toBe(253);
   });
 });
