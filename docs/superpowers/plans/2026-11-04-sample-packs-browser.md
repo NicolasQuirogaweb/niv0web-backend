@@ -25,7 +25,10 @@
 - **No new screens beyond the spec.** The admin keeps its two pages: the pack list and the samples page. The pack form is a dedicated component on the same routes.
 - **Access:** catalogs and ZIP require login, as today (`PrivateRoute`).
 - **Copy:** every user-facing string goes through i18n, in both ES and EN. The admin and API error messages are in Spanish.
-- **Look:** amber accent tokens only. Orbitron (`--font-display`) for headings, buttons and labels; Inter (`--font-body`) for reading text. `PageBackground` uses `PAGE_BACKGROUNDS.samplePacks`. Reduced motion is honoured.
+- **Look:** amber accent tokens only. Bebas Neue (`--font-display`, one weight, never set bold; frontend ADR 0006) for headings, buttons and labels; Inter (`--font-body`) for reading text. `PageBackground` uses `PAGE_BACKGROUNDS.samplePacks`. Reduced motion is honoured.
+- **Consistency with the rest of the site (decided 2026-11-05, after this plan was first written):**
+  - The showcase reuses the frontend's `CatalogConsole` (frontend ADR 0010: spinning record whose label is the selected item's cover, 3D bars), not glass cards.
+  - Every page uses `useConsoleNav({ back })` (frontend ADR 0008): the showcase goes back to `/homelogued`, a pack page back to `/samplepacks`. What can be picked carries `data-nav-item`.
 - **Folder order for Mastermind:** `Drums, 808, Bass, Synths, Fxs`. The pack is named `Mastermind`, with slug `mastermind`.
 - **Prices:** ARS is required for a paid pack and USD is optional. A pack is free when `priceArs` is `null`. **A pack with a price cannot be published.**
 - **Visibility:** the public API and the showcase show only `published: true`. A new pack starts unpublished.
@@ -279,8 +282,8 @@
 ### Task 7 (F): API client, price formatting, showcase
 
 **Files:**
-- Modify: `src/services/api.js`, `src/components/common/GlassCard.jsx` (+css), `src/components/SamplePacks.jsx`, `src/i18n/es.json`, `src/i18n/en.json`
-- Create: `src/utils/formatPrice.js`, `src/components/samplepacks/PackCard.jsx`, `src/components/samplepacks/PackCover.jsx` (+ `SamplePacks.css`, shared), tests `src/utils/formatPrice.test.js`, `src/components/samplepacks/PackCard.test.jsx`
+- Modify: `src/services/api.js`, `src/components/common/CatalogConsole.jsx` (+css, + test), `src/components/SamplePacks.jsx`, `src/i18n/es.json`, `src/i18n/en.json`
+- Create: `src/utils/formatPrice.js`, `src/components/samplepacks/PackCover.jsx` (+ `SamplePacks.css`, shared), tests `src/utils/formatPrice.test.js`, `src/components/samplepacks/PackCover.test.jsx`, `src/components/SamplePacks.test.jsx`
 
 **Interfaces — Produces:**
 - **`samplePacksService`:**
@@ -299,11 +302,17 @@
 - **`PackCover({ title, imageUrl })`:**
   - With an image, it renders the `<img>`.
   - Without one, it renders the generated cover: `div.pack-cover-generated` with the title in Orbitron on an amber gradient, `aria-hidden`.
-- **`GlassCard` gets an optional `coverFallback` node**, rendered inside `.card-cover` when there is no `imageUrl`.
-- **`PackCard({ pack })`:**
-  - a `GlassCard` linking to `/samplepacks/${pack.slug}`;
-  - its badge shows `t('samplePacks.free')` or `formatPackPrice`;
-  - its meta is `t('samplePacks.meta', { folders, samples })`.
+- **`CatalogConsole` gets three optional props** (defaults keep Beats and Loops exactly as they are):
+  - `getHref(item) => string` (default `/${resourceType}/playlist/${item._id}`);
+  - `getMeta(item) => string` (default the count by `resourceType`), shown in each bar and under the record;
+  - `getBadge(item) => string | null` (default `null`), shown in each bar as a small tag and under the record.
+  - When the selected item has no `imageUrl` and the caller passes `renderLabelFallback(item)`, its result is rendered inside the record label instead of the plain amber label.
+- **Showcase (`SamplePacks.jsx`):** `CatalogConsole` with the published packs:
+  - `getHref`: `/samplepacks/${pack.slug}`;
+  - `getMeta`: `t('samplePacks.meta', { folders: pack.folderCount, samples: pack.itemsCount })`;
+  - `getBadge`: `t('samplePacks.free')` when `pack.isFree`, else `formatPackPrice(pack, lang)`;
+  - `renderLabelFallback`: `<PackCover title imageUrl={null} />` (the generated cover, round, inside the label);
+  - `useConsoleNav({ back: '/homelogued' })` (already there).
 - **New i18n keys (ES / EN):**
   - `samplePacks.free`: "GRATIS" / "FREE";
   - `samplePacks.meta`: "{{folders}} carpetas · {{samples}} samples" / "{{folders}} folders · {{samples}} samples";
@@ -314,16 +323,18 @@
   - `formatPackPrice({priceArs: 25000, priceUsd: 15}, 'en')` matches `/\$15/`.
   - `formatPackPrice({priceArs: 25000}, 'en')` matches `/25,000/`.
   - `formatBytes(149946368) === "143 MB"`.
-  - `PackCard` links to `/samplepacks/mastermind`, shows "GRATIS" and "5 carpetas · 247 samples", and renders the generated cover with the text "Mastermind" when `imageUrl` is null.
+  - `SamplePacks` (service mocked) renders a `CatalogConsole` link to `/samplepacks/mastermind` showing "GRATIS" and "5 carpetas · 247 samples", and the record label shows the generated cover with the text "Mastermind" when `imageUrl` is null.
+  - `CatalogConsole` existing tests still pass unchanged (Beats/Loops defaults); a new test covers `getHref`, `getMeta` and `getBadge`.
 - [ ] **Step 2:** Run `npx vitest run src/utils/formatPrice.test.js src/components/samplepacks`. Expected: FAIL.
-- [ ] **Step 3:** Implement, and switch `SamplePacks.jsx` to `PackCard`.
+- [ ] **Step 3:** Implement, and switch `SamplePacks.jsx` to `CatalogConsole`.
 - [ ] **Step 4:** Run `npm run lint && npm test`. Expected: PASS.
-- [ ] **Step 5: Commit.** Message: `feat: sample pack showcase with price badge and generated cover`.
+- [ ] **Step 5: Commit.** Message: `feat: sample pack showcase on the catalog console with price badge and generated cover`.
 
 ### Task 8 (F): SampleBrowser
 
 **Files:**
 - Create: `src/components/samplepacks/SampleBrowser.jsx`, `SampleBrowser.css`, `SampleBrowser.test.jsx`
+- Modify: `src/hooks/useConsoleNav.js`, `src/hooks/useConsoleNav.test.jsx`
 
 **Interfaces:**
 - **Consumes:** the `player` object from `usePlaylistPlayer`: `{ currentIndex, isPlaying, isLoading, currentTime, duration, toggleTrack(index) }`.
@@ -349,6 +360,7 @@
   - Reduced motion: no transitions.
   - Mobile (≤768px): full width, rows at least 40px tall so they are easy to tap.
   - **No download control anywhere.**
+  - **Coexists with `useConsoleNav`** (the page-level arrows): the tree calls `preventDefault()` on every key it handles, and `useConsoleNav` (frontend `src/hooks/useConsoleNav.js`) is changed to ignore arrow and Enter events that are already `defaultPrevented`, as it already does for Esc. Tree items do not carry `data-nav-item`. Add a hook test: an ArrowDown with `defaultPrevented` does not move the page selection.
 - **i18n keys:**
   - `samplePacks.browserLabel`: "Contenido del pack" / "Pack contents";
   - `samplePacks.browserIdle`: "Tocá un sample para escucharlo" / "Click a sample to hear it".
@@ -377,6 +389,7 @@
 - **Produces:** the route `/samplepacks/:slug` behind `PrivateRoute`, plus:
   - `/samples` and `/samples/samplepack/:samplepackId` redirect to `/samplepacks` with `<Navigate replace />`.
   - The page has `SEO`, `PageBackground` (`PAGE_BACKGROUNDS.samplePacks`), `PageHeader`, the cover, an `h1` title and the description, then the ZIP control, then `SampleBrowser`, then the "Volver a sample packs" link (the existing `nav.backToPacksShort`).
+  - `useConsoleNav({ back: '/samplepacks' })`; the ZIP link carries `data-nav-item`.
   - **The ZIP control:**
     - **free pack with `zip`:** `<a href={zip.url} download className="pack-zip-btn">` with the text `t('samplePacks.downloadZip')` and `formatBytes(zip.bytes)`;
     - **free pack without `zip`:** a disabled button, `t('samplePacks.zipPending')`;
