@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const asyncHandler = require('../middleware/asyncHandler');
@@ -11,7 +11,8 @@ const { tryCreatePreview } = require('../services/previewService');
 const ApiError = require('../utils/ApiError');
 const countByParent = require('../utils/countByParent');
 const { success } = require('../utils/response');
-const { uniqueSlug, cleanFolderName, publishProblem, zipBuildStatus, markZipStale } = require('../utils/samplePacks');
+const { buildPackZip } = require('../services/zipService');
+const { uniqueSlug, cleanFolderName, publishProblem, zipBuildStatus, markZipStale, ZIP_BUILD_TIMEOUT_MS } = require('../utils/samplePacks');
 
 const Playlist = require('../models/Playlist');
 const Beat = require('../models/Beat');
@@ -442,6 +443,31 @@ router.delete('/samplepacks/:id/folders/:name', adminAuth, asyncHandler(async (r
     req.params.id, { $pull: { folders: req.params.name }, $set: { 'zip.stale': true, 'zip.staleAt': new Date() } }, { new: true }
   ).lean();
   success(res, updated);
+}));
+
+router.post('/samplepacks/:id/zip', adminAuth, param('id').isMongoId().withMessage('id inválido'), validate, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!(await SamplePack.exists({ _id: id }))) throw ApiError.notFound('Sample pack no encontrado', 'PACK_NOT_FOUND');
+  if (!(await Samples.countDocuments({ samplepackId: id }))) {
+    throw ApiError.conflict('El pack no tiene samples: no hay nada para comprimir', 'PACK_EMPTY');
+  }
+  // Claim atómico: solo gana si no hay un build vigente (uno de más de 30 min se considera trabado).
+  const startedAt = new Date();
+  const claimed = await SamplePack.findOneAndUpdate(
+    {
+      _id: id,
+      $or: [
+        { 'zip.build.status': { $ne: 'building' } },
+        { 'zip.build.startedAt': { $lt: new Date(Date.now() - ZIP_BUILD_TIMEOUT_MS) } },
+      ],
+    },
+    { $set: { 'zip.build': { status: 'building', startedAt, error: null } } },
+    { new: true }
+  );
+  if (!claimed) throw ApiError.conflict('Ya se está generando el ZIP de este pack', 'ZIP_BUILDING');
+  Promise.resolve(buildPackZip(id, undefined, { startedAt }))
+    .catch((err) => console.error(`ZIP build failed for pack ${id}:`, err));
+  success(res, { status: 'building' }, {}, 202);
 }));
 
 router.delete('/samplepacks/:id', adminAuth, asyncHandler(async (req, res) => {

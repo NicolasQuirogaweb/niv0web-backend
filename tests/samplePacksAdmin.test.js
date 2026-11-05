@@ -4,10 +4,12 @@ const jwt = require('jsonwebtoken');
 jest.mock('../models/User');
 jest.mock('../models/SamplePack');
 jest.mock('../models/Samples');
+jest.mock('../services/zipService');
 
 const User = require('../models/User');
 const SamplePack = require('../models/SamplePack');
 const Samples = require('../models/Samples');
+const { buildPackZip } = require('../services/zipService');
 const app = require('../app');
 
 const PACK_ID = '66a000000000000000000001';
@@ -213,5 +215,74 @@ describe('zip stale marking on samples', () => {
     const res = await api('put', '/samples/s1').send({ title: 'renamed' });
     expect(res.status).toBe(200);
     expect(SamplePack.updateOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /samplepacks/:id/zip', () => {
+  const post = () => api('post', `/samplepacks/${PACK_ID}/zip`);
+  const MIN = 60 * 1000;
+
+  beforeEach(() => {
+    SamplePack.exists.mockResolvedValue({ _id: PACK_ID });
+    Samples.countDocuments.mockResolvedValue(3);
+    buildPackZip.mockResolvedValue(undefined);
+  });
+
+  it('claims the build and starts it in the background with the claim', async () => {
+    SamplePack.findOneAndUpdate.mockResolvedValue({ _id: PACK_ID });
+    const res = await post();
+    expect(res.status).toBe(202);
+    expect(res.body.data).toEqual({ status: 'building' });
+    const [filter, update] = SamplePack.findOneAndUpdate.mock.calls[0];
+    expect(filter.$or).toEqual(expect.arrayContaining([
+      { 'zip.build.status': { $ne: 'building' } },
+      { 'zip.build.startedAt': { $lt: expect.any(Date) } },
+    ]));
+    const { startedAt } = update.$set['zip.build'];
+    expect(update.$set['zip.build']).toEqual({ status: 'building', startedAt: expect.any(Date), error: null });
+    expect(buildPackZip).toHaveBeenCalledTimes(1);
+    const args = buildPackZip.mock.calls[0];
+    expect(args[0]).toBe(PACK_ID);
+    expect(args[2]).toEqual({ startedAt });
+  });
+
+  it('uses a 30 minute stale cutoff in the claim filter', async () => {
+    SamplePack.findOneAndUpdate.mockResolvedValue({ _id: PACK_ID });
+    await post();
+    const cutoff = SamplePack.findOneAndUpdate.mock.calls[0][0].$or[1]['zip.build.startedAt'].$lt;
+    expect(Date.now() - cutoff.getTime()).toBeGreaterThan(29 * MIN);
+    expect(Date.now() - cutoff.getTime()).toBeLessThan(31 * MIN);
+  });
+
+  it('answers 409 ZIP_BUILDING when the claim matches nothing (building 5 min ago)', async () => {
+    SamplePack.findOneAndUpdate.mockResolvedValue(null);
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ZIP_BUILDING');
+    expect(buildPackZip).not.toHaveBeenCalled();
+  });
+
+  it('answers 202 when the previous build started 31 min ago (claim matches)', async () => {
+    SamplePack.findOneAndUpdate.mockResolvedValue({ _id: PACK_ID });
+    const res = await post();
+    expect(res.status).toBe(202);
+    expect(buildPackZip).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 409 PACK_EMPTY without claiming when the pack has no samples', async () => {
+    Samples.countDocuments.mockResolvedValue(0);
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PACK_EMPTY');
+    expect(SamplePack.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(buildPackZip).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 when the pack does not exist', async () => {
+    SamplePack.exists.mockResolvedValue(null);
+    const res = await post();
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('PACK_NOT_FOUND');
+    expect(buildPackZip).not.toHaveBeenCalled();
   });
 });
