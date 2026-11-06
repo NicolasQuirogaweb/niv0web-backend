@@ -7,8 +7,10 @@ const samplePackSchema = new mongoose.Schema({
     },
     description: {
         type: String,
-        required: true,  // Descripción del sample pack
+        required: true,  // Descripción del sample pack (castellano)
     },
+    // Descripción en inglés; si falta, el sitio en inglés muestra la de castellano.
+    descriptionEn: { type: String, maxlength: 300, default: null },
     imageUrl: {
         type: String,
         // Opcional: un pack nuevo puede crearse sin portada

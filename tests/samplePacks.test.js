@@ -108,6 +108,10 @@ describe('publicPack', () => {
   it('has no zip when none was built', () => {
     expect(publicPack({ ...base, priceArs: null }, { itemsCount: 0 }).zip).toBeNull();
   });
+  it('exposes the English description, or null when there is none', () => {
+    expect(publicPack({ ...base, descriptionEn: 'English d' }, { itemsCount: 0 }).descriptionEn).toBe('English d');
+    expect(publicPack(base, { itemsCount: 0 }).descriptionEn).toBeNull();
+  });
 });
 
 describe('markZipStale', () => {
