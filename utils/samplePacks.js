@@ -65,6 +65,7 @@ const publicPack = (pack, { itemsCount }) => {
     slug: pack.slug,
     title: pack.title,
     description: pack.description,
+    descriptionEn: pack.descriptionEn || null,
     imageUrl: buildPublicUrl(pack.imageUrl),
     folderCount: (pack.folders || []).length,
     itemsCount,

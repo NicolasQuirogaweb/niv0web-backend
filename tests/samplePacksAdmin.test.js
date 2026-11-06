@@ -293,6 +293,35 @@ describe('POST /samplepacks/:id/zip', () => {
   });
 });
 
+describe('English description', () => {
+  beforeEach(() => {
+    SamplePack.findById.mockReturnValue(lean({ _id: PACK_ID, title: 'Mastermind', published: false }));
+    SamplePack.findByIdAndUpdate.mockImplementation((id, update) => lean({ _id: PACK_ID, ...update.$set }));
+  });
+
+  it('PUT stores descriptionEn, and "" clears it to null', async () => {
+    let res = await api('put', `/samplepacks/${PACK_ID}`).send({ descriptionEn: 'Free drums, 808s and FX.' });
+    expect(res.status).toBe(200);
+    expect(SamplePack.findByIdAndUpdate.mock.calls[0][1].$set.descriptionEn).toBe('Free drums, 808s and FX.');
+    res = await api('put', `/samplepacks/${PACK_ID}`).send({ descriptionEn: '' });
+    expect(res.status).toBe(200);
+    expect(SamplePack.findByIdAndUpdate.mock.calls[1][1].$set.descriptionEn).toBeNull();
+  });
+
+  it('PUT refuses a descriptionEn over 300 characters', async () => {
+    const res = await api('put', `/samplepacks/${PACK_ID}`).send({ descriptionEn: 'x'.repeat(301) });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST stores descriptionEn', async () => {
+    SamplePack.exists.mockResolvedValue(null);
+    SamplePack.create.mockImplementation((doc) => Promise.resolve({ _id: PACK_ID, ...doc }));
+    const res = await api('post', '/samplepacks').send({ title: 'Nuevo', description: 'd', descriptionEn: 'e' });
+    expect(res.status).toBe(201);
+    expect(SamplePack.create.mock.calls[0][0].descriptionEn).toBe('e');
+  });
+});
+
 describe('pack cover is optional', () => {
   beforeEach(() => {
     SamplePack.findById.mockReturnValue(lean({ _id: PACK_ID, title: 'Mastermind', imageUrl: 'https://cdn/old.jpg', published: true }));

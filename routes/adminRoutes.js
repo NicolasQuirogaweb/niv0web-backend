@@ -339,10 +339,14 @@ const coverField = body('imageUrl')
   .trim()
   .isLength({ max: 2048 }).withMessage('imageUrl: máximo 2048 caracteres');
 const coverOrNull = (value) => (value ? value : null);
+// Descripción en inglés: opcional; "" o null la borran.
+const descriptionEnField = body('descriptionEn').optional({ values: 'null' }).isString().withMessage('descriptionEn debe ser texto')
+  .trim().isLength({ max: 300 }).withMessage('descriptionEn: máximo 300 caracteres');
 
 const samplePackFields = [
   body('title').trim().notEmpty().withMessage('El título es requerido').isLength({ max: 100 }).withMessage('El título es requerido'),
   body('description').trim().notEmpty().withMessage('La descripción es requerida').isLength({ max: 300 }).withMessage('La descripción es requerida'),
+  descriptionEnField,
   coverField,
   body('folders').optional().isArray().withMessage('folders debe ser una lista'),
   priceField('priceArs'),
@@ -352,6 +356,7 @@ const samplePackFields = [
 const samplePackUpdateFields = [
   asOptional('title', 100),
   asOptional('description', 300),
+  descriptionEnField,
   coverField,
   priceField('priceArs'),
   priceField('priceUsd'),
@@ -365,7 +370,7 @@ const folderNotFound = () => ApiError.notFound('Carpeta no encontrada', 'FOLDER_
 const slugTaken = async (candidate) => Boolean(await SamplePack.exists({ slug: candidate }));
 
 router.post('/samplepacks', adminAuth, samplePackFields, validate, asyncHandler(async (req, res) => {
-  const { title, description, imageUrl, priceArs, priceUsd } = req.body;
+  const { title, description, descriptionEn, imageUrl, priceArs, priceUsd } = req.body;
   const folders = [];
   for (const raw of req.body.folders || []) {
     const name = cleanFolderName(raw);
@@ -374,7 +379,7 @@ router.post('/samplepacks', adminAuth, samplePackFields, validate, asyncHandler(
   }
   const slug = await uniqueSlug(title, slugTaken);
   const samplepack = await SamplePack.create({
-    title, description, imageUrl: coverOrNull(imageUrl), folders, slug, published: false, type: 'samples',
+    title, description, descriptionEn: descriptionEn || null, imageUrl: coverOrNull(imageUrl), folders, slug, published: false, type: 'samples',
     priceArs: priceArs ?? null, priceUsd: priceUsd ?? null,
   });
   success(res, samplepack, {}, 201);
@@ -383,10 +388,11 @@ router.post('/samplepacks', adminAuth, samplePackFields, validate, asyncHandler(
 router.put('/samplepacks/:id', adminAuth, samplePackUpdateFields, validate, asyncHandler(async (req, res) => {
   const current = await requireSamplePack(req.params.id);
   const set = {};
-  for (const key of ['title', 'description', 'imageUrl', 'priceArs', 'priceUsd', 'published']) {
+  for (const key of ['title', 'description', 'descriptionEn', 'imageUrl', 'priceArs', 'priceUsd', 'published']) {
     if (req.body[key] !== undefined) set[key] = req.body[key];
   }
   if (set.imageUrl !== undefined) set.imageUrl = coverOrNull(set.imageUrl);
+  if (set.descriptionEn !== undefined) set.descriptionEn = set.descriptionEn || null;
   // Se valida contra el estado resultante: poner precio a un pack ya publicado tambien se rechaza.
   if (set.published ?? current.published) {
     const problem = publishProblem({ ...current, ...set }, await Samples.countDocuments({ samplepackId: current._id }));
@@ -497,6 +503,7 @@ router.post('/samplepacks/:id/duplicate', adminAuth, asyncHandler(async (req, re
     title,
     slug,
     description: original.description,
+    descriptionEn: original.descriptionEn || null,
     imageUrl: original.imageUrl,
     folders: original.folders || [],
     priceArs: original.priceArs ?? null,
