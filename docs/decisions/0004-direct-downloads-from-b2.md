@@ -25,4 +25,6 @@ Two complaints from using the site on a phone:
 
 ## Update 2026-11: no beat file is downloadable for free
 
-Beats are now only for listening; they are bought with a license (common, exclusive or exclusive + stems, see the store design in `docs/superpowers/specs/2026-11-03-store-and-about-design.md`). `isLicensedOriginal` refuses every key under `beats/` and `previews/`, so not even the MP3 used for streaming can be downloaded through the API. Sample packs and loops are unaffected.
+Beats are now only for listening; they are bought with a license (common, exclusive or exclusive + stems, see the store design in `docs/superpowers/specs/2026-11-03-store-and-about-design.md`). `isLicensedOriginal` refuses every key under `beats/` and `previews/`, so not even the MP3 used for streaming can be downloaded through the API. Loops are unaffected.
+
+Later in 2026-11, sample packs changed too: [ADR 0005](0005-sample-packs-with-folders.md) makes a pack downloadable only as its ZIP, so `samples/` keys are refused with the same `403 LICENSE_REQUIRED` (listening still uses the public B2 URLs). The "free, in their original format" rule above now applies to the pack ZIP, not to single samples.

@@ -79,15 +79,15 @@ Every response has the shape `{ success, data, meta }` or `{ success: false, mes
 | GET | `/playlists?type=beats\|loops` | Catalogs, each with `itemsCount` |
 | GET | `/samplepacks` | Published sample packs: `slug`, `folderCount`, `itemsCount`, `isFree`, prices and `zip` (`{ url, bytes }`, only for free packs with a built ZIP) |
 | GET | `/samplepacks/:slug` | A published pack with its `folders`, each with its samples (`title`, `audioFile`, `durationSec`). `404 PACK_NOT_FOUND` if missing or unpublished. |
-| GET | `/:type/playlist/:id` | A catalog with its tracks. `type` is `beats`, `loops` or `samples`. |
-| GET | `/:type` | Every item of a type (`beats`, `loops`, `samples`, `prodmixmasters`) |
+| GET | `/:type/playlist/:id` | A catalog with its tracks. `type` is `beats` or `loops`; anything else is `404`. Samples are only served through `/samplepacks/:slug`. |
+| GET | `/:type` | Every item of a type (`beats`, `loops`, `prodmixmasters`); anything else, `samples` included, is `404`. |
 
 **Other**
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/download/link?url=&name=` | Any beat file (original or MP3 preview) is refused with `403 LICENSE_REQUIRED`: beats are sold with a license. Otherwise: signed B2 link (valid 5 min) that downloads the file as an attachment named after the track. The browser downloads straight from B2 ([ADR 0004](docs/decisions/0004-direct-downloads-from-b2.md)). |
-| GET | `/api/download?url=` | Older proxy that streams the file through the API. Kept as a fallback. Both only accept URLs from our bucket ([why](docs/architecture.md#downloads)). |
+| GET | `/api/download/link?url=&name=` | Any beat file (original or MP3 preview) and any single sample (`samples/` keys) is refused with `403 LICENSE_REQUIRED`: beats are sold with a license and a sample pack is downloaded only as its ZIP. Otherwise: signed B2 link (valid 5 min) that downloads the file as an attachment named after the track. The browser downloads straight from B2 ([ADR 0004](docs/decisions/0004-direct-downloads-from-b2.md)). |
+| GET | `/api/download?url=` | Older proxy that streams the file through the API. Kept as a fallback, with the same `403 LICENSE_REQUIRED` for `beats/`, `previews/` and `samples/` keys. Both only accept URLs from our bucket ([why](docs/architecture.md#downloads)). |
 | GET | `/health` | `{ ok, db }`. Render and the Docker `HEALTHCHECK` use it. |
 | GET | `/api/discography` | Public. The artist's own Spotify releases (albums and singles), newest first, from a Mongo cache refreshed every 6 h. |
 | POST | `/api/jobs/refresh-discography` | `Authorization: Bearer <JOBS_TOKEN>`. Refreshes the cache; if Spotify fails it answers 502 and keeps the old cache. |
