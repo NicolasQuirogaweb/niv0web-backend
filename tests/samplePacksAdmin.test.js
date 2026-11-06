@@ -211,8 +211,14 @@ describe('zip stale marking on samples', () => {
     expect(stale()).toHaveLength(1);
   });
 
-  it('does not mark stale on a title-only edit', async () => {
+  it('marks stale when the title changes (the title is the file name inside the zip)', async () => {
     const res = await api('put', '/samples/s1').send({ title: 'renamed' });
+    expect(res.status).toBe(200);
+    expect(SamplePack.updateOne).toHaveBeenCalledWith({ _id: PACK_ID }, { $set: { 'zip.stale': true, 'zip.staleAt': expect.any(Date) } });
+  });
+
+  it('does not mark stale when nothing that reaches the zip changes', async () => {
+    const res = await api('put', '/samples/s1').send({ title: 't', folder: 'A', description: 'new text' });
     expect(res.status).toBe(200);
     expect(SamplePack.updateOne).not.toHaveBeenCalled();
   });
@@ -284,5 +290,45 @@ describe('POST /samplepacks/:id/zip', () => {
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('PACK_NOT_FOUND');
     expect(buildPackZip).not.toHaveBeenCalled();
+  });
+});
+
+describe('pack cover is optional', () => {
+  beforeEach(() => {
+    SamplePack.findById.mockReturnValue(lean({ _id: PACK_ID, title: 'Mastermind', imageUrl: 'https://cdn/old.jpg', published: true }));
+    Samples.countDocuments.mockResolvedValue(3);
+    SamplePack.findByIdAndUpdate.mockImplementation((id, update) => lean({ _id: PACK_ID, ...update.$set }));
+  });
+
+  it('PUT with imageUrl "" saves the pack and stores the cover as null', async () => {
+    const res = await api('put', `/samplepacks/${PACK_ID}`).send({ title: 'Mastermind', imageUrl: '' });
+    expect(res.status).toBe(200);
+    expect(SamplePack.findByIdAndUpdate.mock.calls[0][1].$set.imageUrl).toBeNull();
+    expect(res.body.data.imageUrl).toBeNull();
+  });
+
+  it('PUT with imageUrl null also stores null', async () => {
+    const res = await api('put', `/samplepacks/${PACK_ID}`).send({ imageUrl: null });
+    expect(res.status).toBe(200);
+    expect(SamplePack.findByIdAndUpdate.mock.calls[0][1].$set.imageUrl).toBeNull();
+  });
+
+  it('PUT with a real imageUrl still stores it', async () => {
+    const res = await api('put', `/samplepacks/${PACK_ID}`).send({ imageUrl: 'https://cdn/new.jpg' });
+    expect(res.status).toBe(200);
+    expect(SamplePack.findByIdAndUpdate.mock.calls[0][1].$set.imageUrl).toBe('https://cdn/new.jpg');
+  });
+
+  it('PUT rejects an imageUrl longer than 2048 characters', async () => {
+    const res = await api('put', `/samplepacks/${PACK_ID}`).send({ imageUrl: `https://cdn/${'a'.repeat(2048)}` });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST with imageUrl "" creates the pack with a null cover', async () => {
+    SamplePack.exists.mockResolvedValue(null);
+    SamplePack.create.mockImplementation((doc) => Promise.resolve({ _id: PACK_ID, ...doc }));
+    const res = await api('post', '/samplepacks').send({ title: 'Nuevo', description: 'd', imageUrl: '' });
+    expect(res.status).toBe(201);
+    expect(SamplePack.create.mock.calls[0][0].imageUrl).toBeNull();
   });
 });

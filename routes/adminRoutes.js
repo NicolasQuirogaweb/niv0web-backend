@@ -332,10 +332,18 @@ const priceField = (name) => body(name)
   .isFloat({ min: 0 }).withMessage(`${name} debe ser un número mayor o igual a 0`)
   .toFloat();
 
+// La portada es opcional: "" o null significan "sin portada" y se guardan como null.
+const coverField = body('imageUrl')
+  .optional({ values: 'null' })
+  .isString().withMessage('imageUrl debe ser texto')
+  .trim()
+  .isLength({ max: 2048 }).withMessage('imageUrl: máximo 2048 caracteres');
+const coverOrNull = (value) => (value ? value : null);
+
 const samplePackFields = [
   body('title').trim().notEmpty().withMessage('El título es requerido').isLength({ max: 100 }).withMessage('El título es requerido'),
   body('description').trim().notEmpty().withMessage('La descripción es requerida').isLength({ max: 300 }).withMessage('La descripción es requerida'),
-  body('imageUrl').optional().trim().isLength({ max: 2048 }).withMessage('imageUrl: máximo 2048 caracteres'),
+  coverField,
   body('folders').optional().isArray().withMessage('folders debe ser una lista'),
   priceField('priceArs'),
   priceField('priceUsd'),
@@ -344,7 +352,7 @@ const samplePackFields = [
 const samplePackUpdateFields = [
   asOptional('title', 100),
   asOptional('description', 300),
-  asOptional('imageUrl', 2048),
+  coverField,
   priceField('priceArs'),
   priceField('priceUsd'),
   body('published').optional().isBoolean().withMessage('published debe ser true o false').toBoolean(),
@@ -366,7 +374,7 @@ router.post('/samplepacks', adminAuth, samplePackFields, validate, asyncHandler(
   }
   const slug = await uniqueSlug(title, slugTaken);
   const samplepack = await SamplePack.create({
-    title, description, imageUrl, folders, slug, published: false, type: 'samples',
+    title, description, imageUrl: coverOrNull(imageUrl), folders, slug, published: false, type: 'samples',
     priceArs: priceArs ?? null, priceUsd: priceUsd ?? null,
   });
   success(res, samplepack, {}, 201);
@@ -378,6 +386,7 @@ router.put('/samplepacks/:id', adminAuth, samplePackUpdateFields, validate, asyn
   for (const key of ['title', 'description', 'imageUrl', 'priceArs', 'priceUsd', 'published']) {
     if (req.body[key] !== undefined) set[key] = req.body[key];
   }
+  if (set.imageUrl !== undefined) set.imageUrl = coverOrNull(set.imageUrl);
   // Se valida contra el estado resultante: poner precio a un pack ya publicado tambien se rechaza.
   if (set.published ?? current.published) {
     const problem = publishProblem({ ...current, ...set }, await Samples.countDocuments({ samplepackId: current._id }));
@@ -567,7 +576,9 @@ router.put('/samples/:id', adminAuth, [...trackUpdateFields, body('folder').opti
     { new: true, runValidators: true }
   ).lean();
   if (!sample) throw ApiError.notFound('Sample no encontrado');
-  const changed = (folder !== undefined && folder !== current.folder) || (audioFile !== undefined && audioFile !== current.audioFile);
+  // Titulo, carpeta y archivo definen el contenido y los nombres dentro del zip.
+  const differs = (value, before) => value !== undefined && value !== before;
+  const changed = differs(title, current.title) || differs(folder, current.folder) || differs(audioFile, current.audioFile);
   if (changed) await markZipStale(current.samplepackId);
   success(res, sample);
 }));
