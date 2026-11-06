@@ -26,6 +26,7 @@ Para hacerte admin: logueate una vez desde el front y corré `npm run migrate --
 ## Dónde mirar
 
 - Endpoints y variables de entorno: [README.md](README.md#api)
+- Sample packs con carpetas y descarga en ZIP (`/api/resources/samplepacks[/:slug]`, carpetas en `/api/admin/samplepacks/:id/folders`, ZIP en `POST /api/admin/samplepacks/:id/zip`): [ADR 0005](docs/decisions/0005-sample-packs-with-folders.md)
 - Cómo está armado: [docs/architecture.md](docs/architecture.md)
 - Por qué se tomó cada decisión: [docs/decisions/](docs/decisions)
 - Instrucciones para agentes de IA (Claude Code): [CLAUDE.md](CLAUDE.md)

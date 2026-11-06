@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const asyncHandler = require('../middleware/asyncHandler');
@@ -11,6 +11,8 @@ const { tryCreatePreview } = require('../services/previewService');
 const ApiError = require('../utils/ApiError');
 const countByParent = require('../utils/countByParent');
 const { success } = require('../utils/response');
+const { buildPackZip } = require('../services/zipService');
+const { uniqueSlug, cleanFolderName, publishProblem, zipBuildStatus, markZipStale, ZIP_BUILD_TIMEOUT_MS } = require('../utils/samplePacks');
 
 const Playlist = require('../models/Playlist');
 const Beat = require('../models/Beat');
@@ -71,12 +73,6 @@ const playlistUpdateFields = [
   asOptional('description', 300),
   asOptional('imageUrl', 2048),
   asOptional('backgroundVideo', 2048),
-];
-
-const samplePackUpdateFields = [
-  asOptional('title', 100),
-  asOptional('description', 300),
-  asOptional('imageUrl', 2048),
 ];
 
 const trackUpdateFields = [
@@ -322,31 +318,156 @@ router.delete('/loops/:id', adminAuth, asyncHandler(async (req, res) => {
 router.get('/samplepacks', adminAuth, asyncHandler(async (req, res) => {
   const samplepacks = await SamplePack.find().sort({ createdAt: -1 }).lean();
   const counts = await countByParent(Samples, 'samplepackId', samplepacks.map((sp) => sp._id));
-  const result = samplepacks.map((sp) => ({ ...sp, itemsCount: counts[sp._id.toString()] || 0 }));
+  const result = samplepacks.map((sp) => ({
+    ...sp,
+    itemsCount: counts[sp._id.toString()] || 0,
+    zip: { ...(sp.zip || {}), build: { ...((sp.zip && sp.zip.build) || {}), status: zipBuildStatus(sp) } },
+  }));
   success(res, result);
 }));
+
+// Los precios son un numero >= 0 o null (null = sin precio).
+const priceField = (name) => body(name)
+  .optional({ values: 'null' })
+  .isFloat({ min: 0 }).withMessage(`${name} debe ser un número mayor o igual a 0`)
+  .toFloat();
 
 const samplePackFields = [
   body('title').trim().notEmpty().withMessage('El título es requerido').isLength({ max: 100 }).withMessage('El título es requerido'),
   body('description').trim().notEmpty().withMessage('La descripción es requerida').isLength({ max: 300 }).withMessage('La descripción es requerida'),
-  body('imageUrl').trim().notEmpty().withMessage('La URL de imagen es requerida'),
+  body('imageUrl').optional().trim().isLength({ max: 2048 }).withMessage('imageUrl: máximo 2048 caracteres'),
+  body('folders').optional().isArray().withMessage('folders debe ser una lista'),
+  priceField('priceArs'),
+  priceField('priceUsd'),
 ];
 
+const samplePackUpdateFields = [
+  asOptional('title', 100),
+  asOptional('description', 300),
+  asOptional('imageUrl', 2048),
+  priceField('priceArs'),
+  priceField('priceUsd'),
+  body('published').optional().isBoolean().withMessage('published debe ser true o false').toBoolean(),
+];
+
+const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
+const hasFolder = (folders, name) => folders.some((f) => sameName(f, name));
+const folderExists = () => ApiError.conflict('Ya existe una carpeta con ese nombre', 'FOLDER_EXISTS');
+const folderNotFound = () => ApiError.notFound('Carpeta no encontrada', 'FOLDER_NOT_FOUND');
+const slugTaken = async (candidate) => Boolean(await SamplePack.exists({ slug: candidate }));
+
 router.post('/samplepacks', adminAuth, samplePackFields, validate, asyncHandler(async (req, res) => {
-  const { title, description, imageUrl } = req.body;
-  const samplepack = await SamplePack.create({ title, description, imageUrl, type: 'samples' });
+  const { title, description, imageUrl, priceArs, priceUsd } = req.body;
+  const folders = [];
+  for (const raw of req.body.folders || []) {
+    const name = cleanFolderName(raw);
+    if (hasFolder(folders, name)) throw folderExists();
+    folders.push(name);
+  }
+  const slug = await uniqueSlug(title, slugTaken);
+  const samplepack = await SamplePack.create({
+    title, description, imageUrl, folders, slug, published: false, type: 'samples',
+    priceArs: priceArs ?? null, priceUsd: priceUsd ?? null,
+  });
   success(res, samplepack, {}, 201);
 }));
 
 router.put('/samplepacks/:id', adminAuth, samplePackUpdateFields, validate, asyncHandler(async (req, res) => {
-  const { title, description, imageUrl } = req.body;
+  const current = await requireSamplePack(req.params.id);
+  const set = {};
+  for (const key of ['title', 'description', 'imageUrl', 'priceArs', 'priceUsd', 'published']) {
+    if (req.body[key] !== undefined) set[key] = req.body[key];
+  }
+  // Se valida contra el estado resultante: poner precio a un pack ya publicado tambien se rechaza.
+  if (set.published ?? current.published) {
+    const problem = publishProblem({ ...current, ...set }, await Samples.countDocuments({ samplepackId: current._id }));
+    if (problem === 'PACK_EMPTY') throw ApiError.conflict('El pack no tiene samples: no se puede publicar vacío', problem);
+    if (problem) throw ApiError.conflict('Un pack con precio todavía no se puede publicar: la venta no está disponible', problem);
+  }
+  // El nombre del zip depende del título.
+  if (set.title !== undefined && set.title !== current.title) Object.assign(set, { 'zip.stale': true, 'zip.staleAt': new Date() });
+  // El slug no se toca nunca: las URLs públicas no pueden romperse.
   const samplepack = await SamplePack.findByIdAndUpdate(
-    req.params.id,
-    { $set: { title, description, imageUrl } },
-    { new: true, runValidators: true }
+    req.params.id, { $set: set }, { new: true, runValidators: true }
   ).lean();
   if (!samplepack) throw ApiError.notFound('Sample pack no encontrado');
   success(res, samplepack);
+}));
+
+router.post('/samplepacks/:id/folders', adminAuth, body('name').isString().withMessage('name es requerido'), validate, asyncHandler(async (req, res) => {
+  const name = cleanFolderName(req.body.name);
+  const pack = await requireSamplePack(req.params.id);
+  if (hasFolder(pack.folders || [], name)) throw folderExists();
+  const updated = await SamplePack.findByIdAndUpdate(
+    req.params.id, { $push: { folders: name } }, { new: true }
+  ).lean();
+  success(res, updated, {}, 201);
+}));
+
+router.put('/samplepacks/:id/folders/order', adminAuth, body('folders').isArray().withMessage('folders debe ser una lista'), validate, asyncHandler(async (req, res) => {
+  const pack = await requireSamplePack(req.params.id);
+  const current = pack.folders || [];
+  const next = req.body.folders;
+  const isPermutation = next.length === current.length
+    && new Set(next).size === next.length
+    && next.every((name) => current.includes(name));
+  if (!isPermutation) throw ApiError.badRequest('La lista debe contener exactamente las carpetas actuales', 'INVALID_FOLDER_ORDER');
+  const updated = await SamplePack.findByIdAndUpdate(req.params.id, { $set: { folders: next } }, { new: true }).lean();
+  success(res, updated);
+}));
+
+router.put('/samplepacks/:id/folders', adminAuth, [
+  body('from').isString().withMessage('from es requerido'),
+  body('to').isString().withMessage('to es requerido'),
+], validate, asyncHandler(async (req, res) => {
+  const to = cleanFolderName(req.body.to);
+  const pack = await requireSamplePack(req.params.id);
+  const folders = pack.folders || [];
+  const index = folders.indexOf(req.body.from);
+  if (index === -1) throw folderNotFound();
+  // Cambiar solo las mayúsculas del mismo nombre es válido.
+  if (!sameName(folders[index], to) && hasFolder(folders, to)) throw folderExists();
+  const next = folders.map((f, i) => (i === index ? to : f));
+  const updated = await SamplePack.findByIdAndUpdate(req.params.id, { $set: { folders: next, 'zip.stale': true, 'zip.staleAt': new Date() } }, { new: true }).lean();
+  await Samples.updateMany({ samplepackId: pack._id, folder: req.body.from }, { $set: { folder: to } });
+  success(res, updated);
+}));
+
+router.delete('/samplepacks/:id/folders/:name', adminAuth, asyncHandler(async (req, res) => {
+  const pack = await requireSamplePack(req.params.id);
+  if (!(pack.folders || []).includes(req.params.name)) throw folderNotFound();
+  if (await Samples.exists({ samplepackId: pack._id, folder: req.params.name })) {
+    throw ApiError.conflict('La carpeta tiene samples: movelos o eliminalos primero', 'FOLDER_NOT_EMPTY');
+  }
+  const updated = await SamplePack.findByIdAndUpdate(
+    req.params.id, { $pull: { folders: req.params.name }, $set: { 'zip.stale': true, 'zip.staleAt': new Date() } }, { new: true }
+  ).lean();
+  success(res, updated);
+}));
+
+router.post('/samplepacks/:id/zip', adminAuth, param('id').isMongoId().withMessage('id inválido'), validate, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!(await SamplePack.exists({ _id: id }))) throw ApiError.notFound('Sample pack no encontrado', 'PACK_NOT_FOUND');
+  if (!(await Samples.countDocuments({ samplepackId: id }))) {
+    throw ApiError.conflict('El pack no tiene samples: no hay nada para comprimir', 'PACK_EMPTY');
+  }
+  // Claim atómico: solo gana si no hay un build vigente (uno de más de 30 min se considera trabado).
+  const startedAt = new Date();
+  const claimed = await SamplePack.findOneAndUpdate(
+    {
+      _id: id,
+      $or: [
+        { 'zip.build.status': { $ne: 'building' } },
+        { 'zip.build.startedAt': { $lt: new Date(Date.now() - ZIP_BUILD_TIMEOUT_MS) } },
+      ],
+    },
+    { $set: { 'zip.build': { status: 'building', startedAt, error: null } } },
+    { new: true }
+  );
+  if (!claimed) throw ApiError.conflict('Ya se está generando el ZIP de este pack', 'ZIP_BUILDING');
+  Promise.resolve(buildPackZip(id, undefined, { startedAt }))
+    .catch((err) => console.error(`ZIP build failed for pack ${id}:`, err));
+  success(res, { status: 'building' }, {}, 202);
 }));
 
 router.delete('/samplepacks/:id', adminAuth, asyncHandler(async (req, res) => {
@@ -360,10 +481,18 @@ router.delete('/samplepacks/:id', adminAuth, asyncHandler(async (req, res) => {
 router.post('/samplepacks/:id/duplicate', adminAuth, asyncHandler(async (req, res) => {
   const original = await SamplePack.findById(req.params.id).lean();
   if (!original) throw ApiError.notFound('Sample pack no encontrado');
+  const title = `Copia de ${original.title}`;
+  const slug = await uniqueSlug(title, slugTaken);
+  // La copia nace sin publicar y sin zip: se arma aparte.
   const newSp = await SamplePack.create({
-    title: `Copia de ${original.title}`,
+    title,
+    slug,
     description: original.description,
     imageUrl: original.imageUrl,
+    folders: original.folders || [],
+    priceArs: original.priceArs ?? null,
+    priceUsd: original.priceUsd ?? null,
+    published: false,
     type: 'samples',
   });
   const samples = await Samples.find({ samplepackId: original._id }).lean();
@@ -371,6 +500,8 @@ router.post('/samplepacks/:id/duplicate', adminAuth, asyncHandler(async (req, re
     title: s.title,
     description: s.description,
     audioFile: s.audioFile,
+    folder: s.folder,
+    durationSec: s.durationSec ?? null,
     samplepackId: newSp._id,
   }));
   if (newSamples.length > 0) await Samples.insertMany(newSamples);
@@ -387,12 +518,21 @@ router.get('/samplepacks/:samplepackId/samples', adminAuth, asyncHandler(async (
 const sampleFields = [
   body('title').trim().notEmpty().withMessage('El título del sample es requerido').isLength({ max: 100 }).withMessage('El título del sample es requerido'),
   body('audioFile').trim().notEmpty().withMessage('El archivo de audio es requerido'),
+  body('folder').isString().withMessage('La carpeta del sample es requerida'),
 ];
 
+const requireKnownFolder = (pack, folder) => {
+  if (!(pack.folders || []).includes(folder)) {
+    throw ApiError.badRequest(`La carpeta "${folder}" no existe en este pack`, 'UNKNOWN_FOLDER');
+  }
+};
+
 router.post('/samplepacks/:samplepackId/samples', adminAuth, sampleFields, validate, asyncHandler(async (req, res) => {
-  await requireSamplePack(req.params.samplepackId);
-  const { title, description, audioFile } = req.body;
-  const sample = await Samples.create({ title, description: description || '', audioFile, samplepackId: req.params.samplepackId });
+  const pack = await requireSamplePack(req.params.samplepackId);
+  const { title, description, audioFile, folder } = req.body;
+  requireKnownFolder(pack, folder);
+  const sample = await Samples.create({ title, description: description || '', audioFile, folder, samplepackId: req.params.samplepackId });
+  await markZipStale(pack._id);
   success(res, sample, {}, 201);
 }));
 
@@ -401,31 +541,41 @@ router.post('/samplepacks/:samplepackId/samples/batch', adminAuth, asyncHandler(
   if (!Array.isArray(samples) || samples.length === 0) throw ApiError.badRequest('Se requiere un array de samples');
   const invalidIndex = samples.findIndex(s => !s || !String(s.title || '').trim() || !String(s.audioFile || '').trim());
   if (invalidIndex !== -1) throw ApiError.badRequest(`El sample en la posición ${invalidIndex + 1} no tiene título o audioFile`);
-  await requireSamplePack(req.params.samplepackId);
+  const pack = await requireSamplePack(req.params.samplepackId);
+  // Se valida todo antes de insertar: una carpeta mala no deja samples a medias.
+  samples.forEach((s) => requireKnownFolder(pack, s.folder));
   const withPackId = samples.map(s => ({
     title: s.title,
     description: s.description || '',
     audioFile: s.audioFile,
+    folder: s.folder,
     samplepackId: req.params.samplepackId,
   }));
   const created = await Samples.insertMany(withPackId);
+  await markZipStale(pack._id);
   success(res, { samples: created, count: created.length }, {}, 201);
 }));
 
-router.put('/samples/:id', adminAuth, trackUpdateFields, validate, asyncHandler(async (req, res) => {
-  const { title, description, audioFile } = req.body;
+router.put('/samples/:id', adminAuth, [...trackUpdateFields, body('folder').optional().isString().withMessage('folder inválido')], validate, asyncHandler(async (req, res) => {
+  const { title, description, audioFile, folder } = req.body;
+  const current = await Samples.findById(req.params.id).lean();
+  if (!current) throw ApiError.notFound('Sample no encontrado');
+  if (folder !== undefined) requireKnownFolder(await requireSamplePack(current.samplepackId), folder);
   const sample = await Samples.findByIdAndUpdate(
     req.params.id,
-    { $set: { title, description, audioFile } },
+    { $set: { title, description, audioFile, folder } },
     { new: true, runValidators: true }
   ).lean();
   if (!sample) throw ApiError.notFound('Sample no encontrado');
+  const changed = (folder !== undefined && folder !== current.folder) || (audioFile !== undefined && audioFile !== current.audioFile);
+  if (changed) await markZipStale(current.samplepackId);
   success(res, sample);
 }));
 
 router.delete('/samples/:id', adminAuth, asyncHandler(async (req, res) => {
   const sample = await Samples.findByIdAndDelete(req.params.id).lean();
   if (!sample) throw ApiError.notFound('Sample no encontrado');
+  await markZipStale(sample.samplepackId);
   success(res, { message: 'Sample eliminado' });
 }));
 

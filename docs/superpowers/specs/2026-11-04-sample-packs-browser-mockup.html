@@ -1,0 +1,99 @@
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --a:245 194 107; }
+  h2.t { font:600 18px Inter, Arial; color:#fff; margin:0 0 6px; }
+  p.s { font:13px Inter, Arial; color:rgba(255,255,255,.6); margin:0 0 18px; }
+  h3.st { font:600 15px Inter; color:rgb(var(--a)); margin:22px 0 10px; }
+  .stage { border-radius:14px; padding:26px; background:radial-gradient(ellipse at 30% 30%, #2a2216 0%, #0b0c0e 75%); }
+
+  /* vitrina */
+  .grid { display:flex; gap:18px; flex-wrap:wrap; }
+  .card { width:190px; border-radius:12px; overflow:hidden; background:rgba(255,255,255,.05); border:1px solid rgb(var(--a)/.3); cursor:pointer; }
+  .cover { height:150px; background:linear-gradient(135deg,#3a2a10,#f5c26b 160%); display:flex; align-items:center; justify-content:center; font:800 22px Orbitron; color:#1b1408; letter-spacing:2px; position:relative; }
+  .cover.locked { background:linear-gradient(135deg,#1d2230,#5a6b8c 160%); color:#cfd6e6; }
+  .badge { position:absolute; top:8px; left:8px; font:700 10px Orbitron; letter-spacing:1px; padding:4px 8px; border-radius:4px; background:rgb(var(--a)); color:#1b1408; }
+  .badge.soon { background:rgba(255,255,255,.15); color:#fff; }
+  .card .info { padding:10px 12px; }
+  .card .n { font:600 13px Orbitron; color:#fff; letter-spacing:1px; }
+  .card .m { font:12px Inter; color:rgba(255,255,255,.55); margin-top:4px; }
+
+  /* pack */
+  .pack-head { display:flex; gap:20px; align-items:center; margin-bottom:18px; }
+  .pack-head .cover { width:130px; height:130px; flex:0 0 130px; border-radius:10px; font-size:18px; }
+  .pack-head h1 { font:800 22px Orbitron; color:#fff; letter-spacing:2px; margin:0 0 6px; }
+  .pack-head p { font:13px Inter; color:rgba(255,255,255,.7); margin:0 0 12px; }
+  .zip { display:inline-block; font:600 13px Orbitron; letter-spacing:1px; padding:10px 18px; background:rgb(var(--a)); color:#1b1408; border-radius:6px; text-decoration:none; }
+  .zip small { font:500 11px Inter; letter-spacing:0; opacity:.75; margin-left:6px; }
+
+  /* explorador estilo FL */
+  .browser { border-radius:8px; overflow:hidden; background:#2d3238; border:1px solid #1c1f23; box-shadow:0 10px 30px rgba(0,0,0,.4); max-width:560px; }
+  .bar { display:flex; align-items:center; gap:10px; padding:8px 12px; background:#23272c; border-bottom:1px solid #1c1f23; }
+  .bar .ttl { font:600 12px Inter; color:#d9dde2; }
+  .wave { flex:1; height:26px; display:flex; align-items:center; gap:2px; }
+  .wave i { flex:1; background:rgb(var(--a)/.35); border-radius:1px; }
+  .wave i.p { background:rgb(var(--a)); }
+  .row { display:flex; align-items:center; gap:8px; padding:5px 12px; font:500 13px Inter; color:#c9ced4; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row:hover { background:#383e45; }
+  .row.folder { color:#e7eaee; font-weight:600; }
+  .row.l1 { padding-left:30px; }
+  .tri { width:10px; color:rgb(var(--a)); font-size:10px; }
+  .fic { width:16px; height:12px; border-radius:2px; background:rgb(var(--a)); position:relative; }
+  .fic::before { content:""; position:absolute; top:-3px; left:0; width:7px; height:4px; border-radius:2px 2px 0 0; background:rgb(var(--a)); }
+  .sic { width:12px; height:12px; border-radius:2px; background:#e0874a; position:relative; flex:0 0 12px; }
+  .sic::after { content:""; position:absolute; left:3px; top:3px; border-left:6px solid #2d3238; border-top:3px solid transparent; border-bottom:3px solid transparent; }
+  .row.on { background:rgb(var(--a)/.22); color:#fff; box-shadow:inset 3px 0 0 rgb(var(--a)); }
+  .dur { margin-left:auto; font-size:11px; color:#8a9199; }
+  .row.on .dur { color:rgb(var(--a)); }
+</style>
+
+<h2 class="t">Sample packs: vitrina y explorador estilo FL</h2>
+<p class="s">Arriba, la página Sample packs con un pack por tarjeta. Abajo, lo que ves al abrir uno: los datos del pack, el botón del ZIP y el explorador. Las carpetas se abren y se cierran con un clic, y tocar un sample lo hace sonar.</p>
+
+<h3 class="st">1 · Página Sample packs</h3>
+<div class="stage">
+  <div class="grid">
+    <div class="card"><div class="cover"><span class="badge">GRATIS</span>NIV0<br>VOL.1</div>
+      <div class="info"><div class="n">NIV0 VOL. 1</div><div class="m">5 carpetas · 247 samples</div></div></div>
+    <div class="card"><div class="cover locked"><span class="badge soon">USD 15</span>PACK<br>PAGO</div>
+      <div class="info"><div class="n">EJEMPLO PAGO</div><div class="m">Así se vería uno pago (más adelante)</div></div></div>
+  </div>
+</div>
+
+<h3 class="st">2 · Al abrir el pack</h3>
+<div class="stage">
+  <div class="pack-head">
+    <div class="cover">NIV0<br>VOL.1</div>
+    <div>
+      <h1>NIV0 VOL. 1</h1>
+      <p>808s, drums, bass, synths y FX hechos por niv0. Libres para usar.</p>
+      <a class="zip" href="#">DESCARGAR ZIP <small>gratis · 120 MB</small></a>
+    </div>
+  </div>
+
+  <div class="browser">
+    <div class="bar">
+      <span class="ttl">808 · niv0_808_04_F</span>
+      <div class="wave">
+        <i class="p" style="height:40%"></i><i class="p" style="height:90%"></i><i class="p" style="height:100%"></i><i class="p" style="height:85%"></i><i class="p" style="height:70%"></i><i class="p" style="height:60%"></i><i style="height:52%"></i><i style="height:45%"></i><i style="height:38%"></i><i style="height:32%"></i><i style="height:26%"></i><i style="height:22%"></i><i style="height:18%"></i><i style="height:14%"></i><i style="height:11%"></i><i style="height:9%"></i><i style="height:7%"></i><i style="height:5%"></i>
+      </div>
+    </div>
+    <div class="row folder"><span class="tri">▸</span><span class="fic"></span>Fxs</div>
+    <div class="row folder"><span class="tri">▾</span><span class="fic"></span>808</div>
+    <div class="row l1"><span class="sic"></span>niv0_808_01_C<span class="dur">0:02</span></div>
+    <div class="row l1"><span class="sic"></span>niv0_808_02_D#<span class="dur">0:03</span></div>
+    <div class="row l1"><span class="sic"></span>niv0_808_03_E<span class="dur">0:02</span></div>
+    <div class="row l1 on"><span class="sic"></span>niv0_808_04_F<span class="dur">0:02</span></div>
+    <div class="row l1"><span class="sic"></span>niv0_808_05_G<span class="dur">0:03</span></div>
+    <div class="row folder"><span class="tri">▸</span><span class="fic"></span>Synths</div>
+    <div class="row folder"><span class="tri">▸</span><span class="fic"></span>Drums</div>
+    <div class="row folder"><span class="tri">▸</span><span class="fic"></span>Bass</div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.row.l1').forEach(r => r.addEventListener('click', () => {
+    document.querySelectorAll('.row.on').forEach(x => x.classList.remove('on'));
+    r.classList.add('on');
+    document.querySelector('.bar .ttl').textContent = '808 · ' + r.firstChild.nextSibling.textContent;
+  }));
+</script>

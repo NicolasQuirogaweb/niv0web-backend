@@ -21,6 +21,12 @@ const sampleSchema = new mongoose.Schema({
             message: "La ruta del archivo de audio no es válida",
         },
     },
+    folder: {
+        type: String,
+        required: [true, "La carpeta del sample es obligatoria"],
+        maxlength: [50, "La carpeta no puede exceder los 50 caracteres"],
+    },
+    durationSec: { type: Number, default: null },
     samplepackId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'SamplePack',

@@ -13,6 +13,7 @@ const publicTracks = async (resourceType, items) => {
   return resourceType === 'beats' ? exposeBeatPreviews(withPreviews) : withPreviews;
 };
 const { success } = require('../utils/response');
+const { publicPack } = require('../utils/samplePacks');
 
 const Playlist = require('../models/Playlist');
 const Beat = require('../models/Beat');
@@ -52,15 +53,28 @@ router.get('/playlists', asyncHandler(async (req, res) => {
 }));
 
 router.get('/samplepacks', asyncHandler(async (req, res) => {
-  const samplepacks = await SamplePack.find().sort({ createdAt: -1 }).lean();
-  const counts = await countByParent(Samples, 'samplepackId', samplepacks.map((sp) => sp._id));
+  const packs = await SamplePack.find({ published: true }).sort({ createdAt: -1 }).lean();
+  const counts = await countByParent(Samples, 'samplepackId', packs.map((p) => p._id));
+  success(res, packs.map((p) => publicPack(p, { itemsCount: counts[p._id.toString()] || 0 })));
+}));
 
-  const result = samplepacks.map((sp) => ({
-    ...sp,
-    imageUrl: buildPublicUrl(sp.imageUrl),
-    itemsCount: counts[sp._id.toString()] || 0,
+// Debe ir antes de /:resourceType para que "samplepacks" no se confunda con un tipo.
+router.get('/samplepacks/:slug', asyncHandler(async (req, res) => {
+  const pack = await SamplePack.findOne({ slug: req.params.slug, published: true }).lean();
+  if (!pack) throw ApiError.notFound('Sample pack no encontrado', 'PACK_NOT_FOUND');
+
+  const samples = await Samples.find({ samplepackId: pack._id }).lean();
+  const byFolder = new Map((pack.folders || []).map((name) => [name, []]));
+  for (const s of samples) {
+    const list = byFolder.get(s.folder);
+    if (list) list.push({ _id: s._id, title: s.title, audioFile: buildPublicUrl(s.audioFile), durationSec: s.durationSec ?? null });
+  }
+  const folders = [...byFolder].map(([name, list]) => ({
+    name,
+    samples: list.sort((a, b) => a.title.localeCompare(b.title, 'es', { numeric: true })),
   }));
-  success(res, result);
+
+  success(res, { ...publicPack(pack, { itemsCount: samples.length }), folders });
 }));
 
 router.get('/:resourceType', asyncHandler(async (req, res) => {
