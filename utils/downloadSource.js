@@ -71,9 +71,10 @@ const downloadFilename = (key, requestedName) => {
   return `${clean || 'download'}${ext}`;
 };
 
-// Los beats se venden con licencia: ningún archivo de beats (ni el original ni su
-// preview MP3) se descarga gratis por estos endpoints. Los sample packs y los
-// loops sí, son el aporte libre a la comunidad.
-const isLicensedOriginal = (key) => /^(beats|previews)\//i.test(key);
+// Archivos que no se descargan uno a uno por estos endpoints (el nombre es histórico):
+// los beats se venden con licencia (ni el original ni su preview MP3), y los samples
+// sueltos solo se bajan dentro del ZIP del pack (samplepacks/, servido directo de B2).
+// Los loops sí se descargan libres. Escuchar no pasa por acá: usa la URL pública de B2.
+const isLicensedOriginal = (key) => /^(beats|previews|samples)\//i.test(key);
 
 module.exports = { isLicensedOriginal, isAllowedDownloadUrl, safeFilename, bucketKeyFromUrl, attachmentDisposition, downloadFilename };

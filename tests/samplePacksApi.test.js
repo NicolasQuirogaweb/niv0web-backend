@@ -66,3 +66,64 @@ describe('GET /api/resources/samplepacks/:slug', () => {
     expect(SamplePack.findOne).toHaveBeenCalledWith({ slug: 'nope', published: true });
   });
 });
+
+describe('generic resource routes no longer serve samples', () => {
+  it('GET /api/resources/samples answers 404 without touching the models', async () => {
+    const res = await request(app).get('/api/resources/samples');
+
+    expect(res.status).toBe(404);
+    expect(Samples.find).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/resources/samples/playlist/:id answers 404 without reading the pack', async () => {
+    const res = await request(app).get('/api/resources/samples/playlist/66a000000000000000000001');
+
+    expect(res.status).toBe(404);
+    expect(SamplePack.findById).not.toHaveBeenCalled();
+    expect(Samples.find).not.toHaveBeenCalled();
+  });
+});
+
+describe('zip urls of draft or paid packs never leak', () => {
+  const packs = [
+    { _id: 'p1', slug: 'free', title: 'Free', folders: ['Kicks'], published: true, zip: { url: 'https://cdn/free.zip', key: 'zips/free.zip', fileId: 'f1' } },
+    { _id: 'p2', slug: 'paid', title: 'Paid', folders: [], published: true, priceArs: 1000, zip: { url: 'https://cdn/paid.zip', key: 'zips/paid.zip', fileId: 'f2' } },
+    { _id: 'p3', slug: 'draft', title: 'Draft', folders: [], published: false, zip: { url: 'https://cdn/draft.zip', key: 'zips/draft.zip', fileId: 'f3' } },
+  ];
+  // El mock aplica el filtro como lo haria Mongo, asi el test no depende del orden de los packs.
+  const matches = (filter) => (p) => Object.entries(filter).every(([k, v]) => p[k] === v);
+
+  beforeEach(() => {
+    SamplePack.find.mockImplementation((filter) => ({
+      sort: () => ({ lean: () => Promise.resolve(packs.filter(matches(filter))) }),
+    }));
+    SamplePack.findOne.mockImplementation((filter) => ({
+      lean: () => Promise.resolve(packs.find(matches(filter)) || null),
+    }));
+    Samples.aggregate.mockResolvedValue([]);
+    Samples.find.mockReturnValue({ lean: () => Promise.resolve([]) });
+  });
+
+  it('the list shows only the free published zip url, never key/fileId', async () => {
+    const res = await request(app).get('/api/resources/samplepacks');
+    const body = JSON.stringify(res.body);
+
+    expect(res.status).toBe(200);
+    expect(body).toContain('https://cdn/free.zip');
+    expect(body).not.toContain('paid.zip');
+    expect(body).not.toContain('draft.zip');
+    expect(body).not.toContain('fileId');
+    expect(body).not.toContain('zips/');
+  });
+
+  it('the detail of a draft is 404 and of a paid pack hides the zip', async () => {
+    const draft = await request(app).get('/api/resources/samplepacks/draft');
+    const paid = await request(app).get('/api/resources/samplepacks/paid');
+
+    expect(draft.status).toBe(404);
+    expect(JSON.stringify(draft.body)).not.toContain('draft.zip');
+    expect(paid.status).toBe(200);
+    expect(paid.body.data.zip).toBeNull();
+    expect(JSON.stringify(paid.body)).not.toContain('paid.zip');
+  });
+});
