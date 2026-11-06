@@ -20,6 +20,7 @@ const app = require('../app');
 const WAV = 'https://s3.us-east-005.backblazeb2.com/niv0-audios/beats/1786-ab-Mi%20Beat.wav';
 const BEAT_MP3 = 'https://s3.us-east-005.backblazeb2.com/niv0-audios/beats/1786-ab-Mi%20Beat.mp3';
 const SAMPLE_WAV = 'https://s3.us-east-005.backblazeb2.com/niv0-audios/samples/kick.wav';
+const LOOP_WAV = 'https://s3.us-east-005.backblazeb2.com/niv0-audios/loops/kick.wav';
 
 afterEach(() => jest.resetAllMocks());
 
@@ -54,15 +55,15 @@ describe('GET /api/download/link', () => {
   });
 
   it('returns a signed link with an attachment disposition named after the track', async () => {
-    getDownloadLink.mockResolvedValue('https://f005.backblazeb2.com/file/niv0-audios/samples/kick.wav?Authorization=t');
-    const res = await request(app).get('/api/download/link').query({ url: SAMPLE_WAV, name: 'Mi Kick' });
+    getDownloadLink.mockResolvedValue('https://f005.backblazeb2.com/file/niv0-audios/loops/kick.wav?Authorization=t');
+    const res = await request(app).get('/api/download/link').query({ url: LOOP_WAV, name: 'Mi Kick' });
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body.data).toEqual({
-      url: 'https://f005.backblazeb2.com/file/niv0-audios/samples/kick.wav?Authorization=t',
+      url: 'https://f005.backblazeb2.com/file/niv0-audios/loops/kick.wav?Authorization=t',
       filename: 'Mi Kick.wav',
     });
-    expect(getDownloadLink).toHaveBeenCalledWith('samples/kick.wav', expect.stringMatching(/^attachment; filename="Mi Kick\.wav"/));
+    expect(getDownloadLink).toHaveBeenCalledWith('loops/kick.wav', expect.stringMatching(/^attachment; filename="Mi Kick\.wav"/));
   });
 
   it('does not hand out any beat file, not even the MP3 or its preview', async () => {
@@ -86,9 +87,18 @@ describe('GET /api/download/link', () => {
     expect(getDownloadLink).not.toHaveBeenCalled();
   });
 
-  it('sample pack WAVs stay free to download', async () => {
-    getDownloadLink.mockResolvedValue('https://f005.backblazeb2.com/file/niv0-audios/samples/kick.wav?Authorization=t');
-    const res = await request(app).get('/api/download/link').query({ url: SAMPLE_WAV, name: 'Kick' });
+  it('does not hand out single samples: they download only inside the pack ZIP', async () => {
+    for (const path of ['/api/download/link', '/api/download']) {
+      const res = await request(app).get(path).query({ url: SAMPLE_WAV });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('LICENSE_REQUIRED');
+    }
+    expect(getDownloadLink).not.toHaveBeenCalled();
+  });
+
+  it('loop WAVs stay free to download', async () => {
+    getDownloadLink.mockResolvedValue('https://f005.backblazeb2.com/file/niv0-audios/loops/kick.wav?Authorization=t');
+    const res = await request(app).get('/api/download/link').query({ url: LOOP_WAV, name: 'Kick' });
     expect(res.status).toBe(200);
     expect(res.body.data.filename).toBe('Kick.wav');
   });
@@ -98,19 +108,20 @@ describe('GET /api/download/link', () => {
     err.statusCode = 502;
     err.code = 'DOWNLOAD_LINK_FAILED';
     getDownloadLink.mockRejectedValue(err);
-    const res = await request(app).get('/api/download/link').query({ url: SAMPLE_WAV });
+    const res = await request(app).get('/api/download/link').query({ url: LOOP_WAV });
     expect(res.status).toBe(502);
     expect(res.body.code).toBe('DOWNLOAD_LINK_FAILED');
   });
 });
 
 describe('beat originals', () => {
-  it('flags every beat file (original or preview) as licensed, never samples or loops', () => {
+  it('flags every beat file (original or preview) or sample as not downloadable one by one, never loops or pack ZIPs', () => {
     expect(isLicensedOriginal('beats/a.wav')).toBe(true);
     expect(isLicensedOriginal('beats/a.WAV')).toBe(true);
     expect(isLicensedOriginal('beats/a.mp3')).toBe(true);
     expect(isLicensedOriginal('previews/a.mp3')).toBe(true);
-    expect(isLicensedOriginal('samples/a.wav')).toBe(false);
+    expect(isLicensedOriginal('samples/123-kick.wav')).toBe(true);
+    expect(isLicensedOriginal('samplepacks/mastermind-x.zip')).toBe(false);
     expect(isLicensedOriginal('loops/a.wav')).toBe(false);
   });
 
