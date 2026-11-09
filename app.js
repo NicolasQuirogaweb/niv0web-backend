@@ -54,7 +54,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-app.use('/api/auth', authLimiter);
+// El límite estricto es para el login con Google. El chequeo de sesión (verify-token) se hace en
+// cada carga de página y refresh necesita una cookie válida: contarlos deslogueaba a quien
+// recargaba unas 20 veces en 15 minutos. Siguen bajo el límite general.
+app.use('/api/auth/google-login', authLimiter);
 
 app.use(cookieParser());
 // Los archivos van por multipart (multer), así que el JSON nunca necesita ser grande.
