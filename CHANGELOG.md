@@ -22,6 +22,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file star
 - Node 22, Docker image runs as non-root with a healthcheck.
 
 ### Fixed
+- Google login failed with `400 VALIDATION_ERROR` for accounts where Google sends no profile photo (`picture`): `imageUrl` was required. It is optional now (`null` when there is none), an existing user keeps the photo we had, and a missing name falls back to the start of the email.
 - A pack without a cover (like Mastermind) could not be saved from the admin: `imageUrl` `""` or `null` is accepted and stored as `null`, which also removes a cover.
 - Renaming a sample now marks the pack ZIP stale (the title is its file name inside the ZIP).
 - Loop catalogs always showed 0 items in the public list.
