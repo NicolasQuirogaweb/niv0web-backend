@@ -73,7 +73,10 @@ router.post("/google-login", asyncHandler(async (req, res) => {
     throw ApiError.unauthorized("Token de Google inválido", "INVALID_GOOGLE_TOKEN");
   }
 
-  const { sub, email_verified, email, name, picture } = payload;
+  const { sub, email_verified, email, picture } = payload;
+  // Google puede no mandar nombre ni foto (depende de la cuenta). Sin nombre usamos el
+  // principio del mail; sin foto dejamos la que ya teníamos.
+  const name = payload.name || email.split("@")[0];
   if (!email_verified) throw ApiError.badRequest("El correo electrónico no está verificado");
 
   let user = await User.findOne({ googleId: sub });
@@ -83,11 +86,11 @@ router.post("/google-login", asyncHandler(async (req, res) => {
   }
 
   if (!user) {
-    user = new User({ email, name, imageUrl: picture, googleId: sub });
+    user = new User({ email, name, imageUrl: picture || null, googleId: sub });
   } else {
     user.googleId = sub;
     user.name = name;
-    user.imageUrl = picture;
+    if (picture) user.imageUrl = picture;
   }
   await user.save();
 
