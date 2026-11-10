@@ -1,3 +1,5 @@
+const { reportError } = require('../services/monitoring');
+
 const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Error interno del servidor';
@@ -60,6 +62,7 @@ const errorHandler = (err, req, res, next) => {
 
   if (statusCode === 500) {
     console.error('ERROR 500:', err);
+    reportError(err);
   }
 
   res.status(statusCode).json(response);

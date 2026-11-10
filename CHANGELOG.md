@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file star
 ## [Unreleased]
 
 ### Added
+- Sentry error reporting: with `SENTRY_DSN` set, unexpected 500s and crashes go to the `niv0-backend` project, without personal data (no IP, cookies or headers) and without performance traces. Client errors (4xx) are not sent. See ADR 0006.
 - Sample packs get an optional English description, `descriptionEn` (max 300 characters). The admin create and update endpoints accept it, and `""` clears it. The public pack responses return it, or `null` when it is missing, in which case the English site falls back to `description`.
 - Sample packs with folders and ZIP downloads: ordered `folders` per pack, `folder` per sample, `slug`, optional prices, publish rules (empty or paid packs can't be published), `GET /api/resources/samplepacks/:slug`, admin folder endpoints and `POST /api/admin/samplepacks/:id/zip` (streamed ZIP build with atomic claim and stale tracking). See ADR 0005.
 - `scripts/migrate-samplepacks.js` (`npm run migrate:samplepacks`): merges the old packs into Mastermind; dry run by default, idempotent `--apply`, `--delete-old` for empty packs.

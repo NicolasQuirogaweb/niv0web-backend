@@ -23,6 +23,8 @@ const envSchema = z.object({
   SPOTIFY_ARTIST_ID: optionalString(z.string()),
   // Token que usan los crons de GitHub Actions para llamar a /api/jobs/*.
   JOBS_TOKEN: optionalString(z.string().min(32, 'JOBS_TOKEN debe tener al menos 32 caracteres')),
+  // Sentry (errores de producción). Opcional: sin ella no se manda nada.
+  SENTRY_DSN: optionalString(z.string().url('SENTRY_DSN debe ser una URL válida')),
   FRONTEND_URL: z.string().url('FRONTEND_URL debe ser una URL válida').default('http://localhost:3000'),
 });
 
