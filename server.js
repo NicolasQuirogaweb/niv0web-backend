@@ -1,4 +1,6 @@
 const env = require('./config/env');
+// Sentry arranca antes que Express para capturar también los errores al iniciar.
+require('./services/monitoring').initMonitoring(env);
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const app = require('./app');

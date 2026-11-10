@@ -56,6 +56,7 @@ These are validated in [`config/env.js`](config/env.js). The template is [`.env.
 | `GOOGLE_CLIENT_ID` | yes | Same client id as the frontend. Used to check the token's audience. |
 | `FRONTEND_URL` | no | Allowed CORS origin. Default `http://localhost:3000` |
 | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_ARTIST_ID` | no | Discography for the About page. Without them `/api/discography` returns `[]` |
+| `SENTRY_DSN` | no | Sends unexpected errors (500s, crashes) to Sentry, project `niv0-backend`. Without it nothing is sent |
 | `JOBS_TOKEN` | no | 32+ characters. Bearer token for `/api/jobs/*`, used by the GitHub Actions crons. Without it the jobs answer 503 |
 | `PORT`, `NODE_ENV` | no | Default `5000` / `development` |
 
