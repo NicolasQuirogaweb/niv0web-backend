@@ -23,6 +23,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file star
 - Node 22, Docker image runs as non-root with a healthcheck.
 
 ### Fixed
+- Sample pack ZIPs follow the admin: after renaming the pack, a folder or a sample, adding or deleting samples, the ZIP is rebuilt on its own 20 s after the last edit (if a build is running, it retries after it). The ZIP downloads with the pack title (`mastermind @niv0.zip`) instead of its storage key (`mastermind-mw56hf5n.zip`), through B2's `b2-content-disposition`.
 - Users got logged out after reloading about 20 pages in 15 minutes: the strict auth limit (20 per 15 min per IP) also counted the session check that runs on every page load, and then blocked logging in again. It now applies only to `POST /api/auth/google-login`; `verify-token` and `refresh` stay under the general limit.
 - Google login failed with `400 VALIDATION_ERROR` for accounts where Google sends no profile photo (`picture`): `imageUrl` was required. It is optional now (`null` when there is none), an existing user keeps the photo we had, and a missing name falls back to the start of the email.
 - A pack without a cover (like Mastermind) could not be saved from the admin: `imageUrl` `""` or `null` is accepted and stored as `null`, which also removes a cover.

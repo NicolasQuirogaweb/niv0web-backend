@@ -33,6 +33,17 @@ const extensionOf = (audioFile) => {
   return /^\.[a-z0-9]{1,5}$/i.test(ext) ? ext : '.wav';
 };
 
+/**
+ * Content-Disposition para que el ZIP se descargue con el título del pack (como está en
+ * el admin) y no con su key de B2. Va el nombre en ASCII y, aparte, el nombre real en UTF-8.
+ */
+const zipContentDisposition = (title) => {
+  const name = `${safe(title)}.zip`;
+  const ascii = name.replace(/[^ -~]/g, '_').replace(/"/g, '_');
+  const encoded = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+};
+
 const titleCompare = (a, b) => String(a.title).localeCompare(String(b.title), undefined, { numeric: true, sensitivity: 'base' });
 
 /**
@@ -174,7 +185,11 @@ const buildPackZip = async (packId, deps = {}, claim = null) => {
     archive.on('error', () => {});
     archive.on('warning', (err) => archive.destroy(err));
 
-    upload = b2.uploadLargeStream(archive, key, { mime: 'application/zip', cacheControl: ZIP_CACHE_CONTROL });
+    upload = b2.uploadLargeStream(archive, key, {
+      mime: 'application/zip',
+      cacheControl: ZIP_CACHE_CONTROL,
+      contentDisposition: zipContentDisposition(pack.title),
+    });
     // Si la subida falla a mitad de camino nadie consume el archive: cada paso
     // compite con este rechazo (y con el tope total) para no quedar colgado.
     const uploadFailed = upload.then(
@@ -317,4 +332,4 @@ const buildPackZip = async (packId, deps = {}, claim = null) => {
   }
 };
 
-module.exports = { zipEntries, buildPackZip, safe, ZIP_CACHE_CONTROL, SOURCE_IDLE_TIMEOUT_MS };
+module.exports = { zipEntries, buildPackZip, safe, zipContentDisposition, ZIP_CACHE_CONTROL, SOURCE_IDLE_TIMEOUT_MS };

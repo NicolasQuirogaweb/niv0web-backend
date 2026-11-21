@@ -137,6 +137,8 @@ describe('buildPackZip', () => {
     expect(deps.b2.uploadLargeStream).toHaveBeenCalledWith(expect.anything(), KEY, {
       mime: 'application/zip',
       cacheControl: 'public, max-age=31536000, immutable',
+      // Se descarga con el título del pack, no con la key de B2 (slug + sello de tiempo).
+      contentDisposition: `attachment; filename="Mastermind.zip"; filename*=UTF-8''Mastermind.zip`,
     });
     expect(uploaded.subarray(0, 2).toString()).toBe('PK');
     expect(uploaded.includes('Mastermind/Drums/kick.wav')).toBe(true);
@@ -352,5 +354,17 @@ describe('buildPackZip', () => {
       expect(b2.cancelLargeFile).toHaveBeenCalledWith({ fileId: 'large-1' });
       expect(b2.finishLargeFile).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('zipDownloadName', () => {
+  const { zipContentDisposition } = require('../services/zipService');
+  it('uses the pack title as edited in the admin, with an ASCII fallback', () => {
+    expect(zipContentDisposition('mastermind @niv0')).toBe(
+      `attachment; filename="mastermind @niv0.zip"; filename*=UTF-8''mastermind%20%40niv0.zip`
+    );
+    expect(zipContentDisposition('Pack: ñandú "x"')).toBe(
+      `attachment; filename="Pack_ _and_ _x_.zip"; filename*=UTF-8''Pack_%20%C3%B1and%C3%BA%20_x_.zip`
+    );
   });
 });

@@ -189,8 +189,10 @@ const withRetry = async (fn) => {
  * STORAGE_UPLOAD_FAILED error is thrown.
  * @returns {Promise<{ url: string, key: string, bytes: number, fileId: string }>}
  */
-const uploadLargeStream = async (readable, key, { mime = 'application/octet-stream', cacheControl } = {}) => {
+const uploadLargeStream = async (readable, key, { mime = 'application/octet-stream', cacheControl, contentDisposition } = {}) => {
   const fileInfo = cacheControl ? { 'b2-cache-control': cacheControl } : {};
+  // B2 lo devuelve como Content-Disposition: el navegador guarda el archivo con ese nombre.
+  if (contentDisposition) fileInfo['b2-content-disposition'] = contentDisposition;
   let fileId = null;
   const partSha1Array = [];
   let chunks = [];

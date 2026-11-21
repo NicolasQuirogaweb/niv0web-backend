@@ -54,8 +54,12 @@ const zipBuildStatus = (pack, now = Date.now()) => {
 };
 
 // staleAt permite que un build en curso sepa si hubo una edicion despues de empezar.
-const markZipStale = (packId) =>
-  SamplePack.updateOne({ _id: packId }, { $set: { 'zip.stale': true, 'zip.staleAt': new Date() } });
+// Marca el ZIP desactualizado y programa que se rearme solo (services/zipAutoBuild).
+const markZipStale = async (packId) => {
+  const result = await SamplePack.updateOne({ _id: packId }, { $set: { 'zip.stale': true, 'zip.staleAt': new Date() } });
+  require('../services/zipAutoBuild').scheduleZipRebuild(packId);
+  return result;
+};
 
 const publicPack = (pack, { itemsCount }) => {
   const isFree = isFreePack(pack);
