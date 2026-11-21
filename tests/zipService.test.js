@@ -121,6 +121,29 @@ describe('buildPackZip', () => {
   const okWavs = () => ({ data: Readable.from([wav(100, 0)]) });
   const notFound = () => Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } });
 
+  it('retries a sample whose download fails before sending any byte (socket hang up)', async () => {
+    const hangUp = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+    let calls = 0;
+    setup({
+      samples: [sample('s1', 'kick', 'Drums')],
+      get: async () => {
+        calls += 1;
+        if (calls < 3) throw hangUp;
+        return okWavs();
+      },
+    });
+    await buildPackZip(PACK_ID, { ...deps, retryDelayMs: 0 });
+    expect(calls).toBe(3);
+    expect(uploaded.includes('Mastermind/Drums/kick.wav')).toBe(true);
+  });
+
+  it('does not retry a missing file (404)', async () => {
+    let calls = 0;
+    setup({ samples: [sample('s1', 'kick', 'Drums')], get: async () => { calls += 1; throw notFound(); } });
+    await buildPackZip(PACK_ID, { ...deps, retryDelayMs: 0 });
+    expect(calls).toBe(1);
+  });
+
   it('streams the WAVs into the upload, saves the new zip and deletes the one it replaced', async () => {
     const files = { [`${BASE}/samples/s1.wav`]: wav(16000, 1), [`${BASE}/samples/s2.wav`]: wav(8000, 2) };
     setup({
@@ -137,6 +160,8 @@ describe('buildPackZip', () => {
     expect(deps.b2.uploadLargeStream).toHaveBeenCalledWith(expect.anything(), KEY, {
       mime: 'application/zip',
       cacheControl: 'public, max-age=31536000, immutable',
+      // Se descarga con el título del pack, no con la key de B2 (slug + sello de tiempo).
+      contentDisposition: `attachment; filename="Mastermind.zip"; filename*=UTF-8''Mastermind.zip`,
     });
     expect(uploaded.subarray(0, 2).toString()).toBe('PK');
     expect(uploaded.includes('Mastermind/Drums/kick.wav')).toBe(true);
@@ -352,5 +377,17 @@ describe('buildPackZip', () => {
       expect(b2.cancelLargeFile).toHaveBeenCalledWith({ fileId: 'large-1' });
       expect(b2.finishLargeFile).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('zipDownloadName', () => {
+  const { zipContentDisposition } = require('../services/zipService');
+  it('uses the pack title as edited in the admin, with an ASCII fallback', () => {
+    expect(zipContentDisposition('mastermind @niv0')).toBe(
+      `attachment; filename="mastermind @niv0.zip"; filename*=UTF-8''mastermind%20%40niv0.zip`
+    );
+    expect(zipContentDisposition('Pack: ñandú "x"')).toBe(
+      `attachment; filename="Pack_ _and_ _x_.zip"; filename*=UTF-8''Pack_%20%C3%B1and%C3%BA%20_x_.zip`
+    );
   });
 });

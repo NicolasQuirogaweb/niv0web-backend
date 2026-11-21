@@ -27,3 +27,7 @@ Sample packs were five separate packs (Drums, 808, Bass, Synths, Fxs), each a fl
 - A ZIP can be outdated until an admin rebuilds it; the admin panel shows `stale`.
 - Builds are one at a time per pack, but different packs could build in parallel, a memory risk on Render Free (known limitation while only Mastermind exists).
 - The old packs are unpublished, not deleted; `--delete-old` removes the empty ones, only with the owner's OK.
+
+## Update 2026-11-21
+
+Edits that change the ZIP contents or names (pack title, folder rename/delete, samples added, edited or deleted) also schedule an automatic rebuild (`services/zipAutoBuild.js`, 5 s after the last edit; retries while a build runs, and up to 3 times after a failed build; a sample download cut before its first byte is retried up to 3 times). The admin button stays for a manual rebuild. The ZIP is uploaded with `b2-content-disposition`, so it downloads as `<pack title>.zip`.

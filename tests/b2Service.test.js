@@ -73,6 +73,17 @@ describe('uploadLargeStream', () => {
     });
   });
 
+  it('sends the download name (content disposition) in both upload paths', async () => {
+    const cd = `attachment; filename="Pack.zip"; filename*=UTF-8''Pack.zip`;
+    await uploadLargeStream(syntheticStream(25 * MB), 'samplepacks/x-3.zip', { ...opts, contentDisposition: cd });
+    expect(b2.startLargeFile.mock.calls[0][0].axiosOverride.data.fileInfo).toEqual({
+      'b2-cache-control': opts.cacheControl,
+      'b2-content-disposition': cd,
+    });
+    await uploadLargeStream(syntheticStream(1 * MB), 'samplepacks/x-4.zip', { ...opts, contentDisposition: cd });
+    expect(b2.uploadFile.mock.calls[0][0].info).toEqual({ 'b2-cache-control': opts.cacheControl, 'b2-content-disposition': cd });
+  });
+
   it('uploads a 1 MB stream with a single uploadFile', async () => {
     const result = await uploadLargeStream(syntheticStream(1 * MB), 'samplepacks/x-2.zip', opts);
 
