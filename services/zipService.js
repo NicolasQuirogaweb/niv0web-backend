@@ -44,6 +44,25 @@ const zipContentDisposition = (title) => {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 };
 
+// Un corte de conexión antes del primer byte (socket hang up, reset, sin respuesta, 5xx)
+// se reintenta: todavía no se escribió nada en el ZIP. Un 404 o 403 no se arregla reintentando.
+const SOURCE_ATTEMPTS = 3;
+const SOURCE_RETRY_DELAY_MS = 1000;
+const isRetryable = (err) => {
+  const status = err && err.response && err.response.status;
+  return !status || status >= 500;
+};
+const getWithRetry = async (http, url, retryDelayMs) => {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await http.get(url, { responseType: 'stream', timeout: HTTP_TIMEOUT_MS });
+    } catch (err) {
+      if (attempt >= SOURCE_ATTEMPTS || !isRetryable(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+    }
+  }
+};
+
 const titleCompare = (a, b) => String(a.title).localeCompare(String(b.title), undefined, { numeric: true, sensitivity: 'base' });
 
 /**
@@ -151,6 +170,7 @@ const buildPackZip = async (packId, deps = {}, claim = null) => {
     Samples = DefaultSamples,
     now = () => new Date(),
     idleTimeoutMs = SOURCE_IDLE_TIMEOUT_MS,
+    retryDelayMs = SOURCE_RETRY_DELAY_MS,
     buildTimeoutMs = ZIP_BUILD_TIMEOUT_MS,
   } = deps;
 
@@ -207,7 +227,7 @@ const buildPackZip = async (packId, deps = {}, claim = null) => {
       const title = byId.get(entry.sampleId)?.title ?? entry.name;
       let tap;
       try {
-        const res = await step(http.get(entry.url, { responseType: 'stream', timeout: HTTP_TIMEOUT_MS }));
+        const res = await step(getWithRetry(http, entry.url, retryDelayMs));
         source = res.data;
         tap = headerTap();
         await step(

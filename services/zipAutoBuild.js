@@ -4,7 +4,10 @@ const { ZIP_BUILD_TIMEOUT_MS } = require('../utils/samplePacks');
 
 // Cuánto se espera después de la última edición antes de rearmar el ZIP: renombrar
 // varios samples seguidos arma un solo ZIP, no uno por cambio.
-const AUTO_BUILD_DELAY_MS = 20 * 1000;
+const AUTO_BUILD_DELAY_MS = 5 * 1000;
+// Si el armado falla (un archivo que no respondió), se reintenta solo hasta 3 veces.
+const MAX_AUTO_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 15 * 1000;
 
 const timers = new Map();
 
@@ -36,7 +39,7 @@ const defaultBuild = (...args) => require('./zipService').buildPackZip(...args);
  * de nuevo más tarde: ese build no incluye la edición. Nunca falla hacia quien llama.
  */
 const scheduleZipRebuild = (packId, deps = {}) => {
-  const { Samples = DefaultSamples, build = defaultBuild, delayMs = AUTO_BUILD_DELAY_MS } = deps;
+  const { Samples = DefaultSamples, build = defaultBuild, delayMs = AUTO_BUILD_DELAY_MS, attempt = 1 } = deps;
   const id = String(packId);
   clearTimeout(timers.get(id));
   const timer = setTimeout(async () => {
@@ -49,6 +52,7 @@ const scheduleZipRebuild = (packId, deps = {}) => {
         return;
       }
       await build(packId, undefined, { startedAt });
+      await retryIfFailed(packId, { ...deps, attempt });
     } catch (err) {
       console.error(`Auto ZIP build failed for pack ${id}:`, err.message);
     }
@@ -57,9 +61,22 @@ const scheduleZipRebuild = (packId, deps = {}) => {
   timers.set(id, timer);
 };
 
+/**
+ * Si el último armado falló, programa otro intento (hasta MAX_AUTO_ATTEMPTS en total).
+ * Lo usan el armado automático y el botón del admin.
+ */
+async function retryIfFailed(packId, deps = {}) {
+  const { SamplePack = DefaultSamplePack, attempt = 1 } = deps;
+  if (!SamplePack.findById || attempt >= MAX_AUTO_ATTEMPTS) return;
+  const after = await SamplePack.findById(packId).lean();
+  if (after?.zip?.build?.status === 'failed') {
+    scheduleZipRebuild(packId, { ...deps, attempt: attempt + 1, delayMs: RETRY_DELAY_MS });
+  }
+}
+
 const cancelAllZipRebuilds = () => {
   timers.forEach((timer) => clearTimeout(timer));
   timers.clear();
 };
 
-module.exports = { AUTO_BUILD_DELAY_MS, claimZipBuild, scheduleZipRebuild, cancelAllZipRebuilds };
+module.exports = { AUTO_BUILD_DELAY_MS, claimZipBuild, scheduleZipRebuild, retryIfFailed, cancelAllZipRebuilds };

@@ -121,6 +121,29 @@ describe('buildPackZip', () => {
   const okWavs = () => ({ data: Readable.from([wav(100, 0)]) });
   const notFound = () => Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } });
 
+  it('retries a sample whose download fails before sending any byte (socket hang up)', async () => {
+    const hangUp = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+    let calls = 0;
+    setup({
+      samples: [sample('s1', 'kick', 'Drums')],
+      get: async () => {
+        calls += 1;
+        if (calls < 3) throw hangUp;
+        return okWavs();
+      },
+    });
+    await buildPackZip(PACK_ID, { ...deps, retryDelayMs: 0 });
+    expect(calls).toBe(3);
+    expect(uploaded.includes('Mastermind/Drums/kick.wav')).toBe(true);
+  });
+
+  it('does not retry a missing file (404)', async () => {
+    let calls = 0;
+    setup({ samples: [sample('s1', 'kick', 'Drums')], get: async () => { calls += 1; throw notFound(); } });
+    await buildPackZip(PACK_ID, { ...deps, retryDelayMs: 0 });
+    expect(calls).toBe(1);
+  });
+
   it('streams the WAVs into the upload, saves the new zip and deletes the one it replaced', async () => {
     const files = { [`${BASE}/samples/s1.wav`]: wav(16000, 1), [`${BASE}/samples/s2.wav`]: wav(8000, 2) };
     setup({

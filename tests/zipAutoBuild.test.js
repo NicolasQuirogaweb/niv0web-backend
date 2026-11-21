@@ -67,3 +67,24 @@ describe('claimZipBuild', () => {
     expect(await claimZipBuild('p1', d)).toBeNull();
   });
 });
+
+describe('scheduleZipRebuild after a failure', () => {
+  it('tries again on its own when the build failed (up to 3 tries), then stops', async () => {
+    const d = deps({
+      SamplePack: {
+        findOneAndUpdate: jest.fn().mockResolvedValue({ _id: 'p1' }),
+        findById: jest.fn(() => ({ lean: () => Promise.resolve({ zip: { build: { status: 'failed' } } }) })),
+      },
+    });
+    scheduleZipRebuild('p1', d);
+    for (let i = 0; i < 6; i++) {
+      jest.advanceTimersByTime(AUTO_BUILD_DELAY_MS * 4);
+      await flush();
+    }
+    expect(d.build).toHaveBeenCalledTimes(3);
+  });
+
+  it('waits only a few seconds after an edit', () => {
+    expect(AUTO_BUILD_DELAY_MS).toBeLessThanOrEqual(8000);
+  });
+});

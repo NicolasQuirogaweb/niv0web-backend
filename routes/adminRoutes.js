@@ -12,7 +12,7 @@ const ApiError = require('../utils/ApiError');
 const countByParent = require('../utils/countByParent');
 const { success } = require('../utils/response');
 const { buildPackZip } = require('../services/zipService');
-const { claimZipBuild, scheduleZipRebuild } = require('../services/zipAutoBuild');
+const { claimZipBuild, scheduleZipRebuild, retryIfFailed } = require('../services/zipAutoBuild');
 const { uniqueSlug, cleanFolderName, publishProblem, zipBuildStatus, markZipStale } = require('../utils/samplePacks');
 
 const Playlist = require('../models/Playlist');
@@ -475,6 +475,7 @@ router.post('/samplepacks/:id/zip', adminAuth, param('id').isMongoId().withMessa
   const startedAt = await claimZipBuild(id, { SamplePack });
   if (!startedAt) throw ApiError.conflict('Ya se está generando el ZIP de este pack', 'ZIP_BUILDING');
   Promise.resolve(buildPackZip(id, undefined, { startedAt }))
+    .then(() => retryIfFailed(id))
     .catch((err) => console.error(`ZIP build failed for pack ${id}:`, err));
   success(res, { status: 'building' }, {}, 202);
 }));
